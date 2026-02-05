@@ -329,3 +329,4 @@ For issues, questions, or contributions:
 **OpenAlerts** - Free, Open-Source Fire Station Alerting System
 
 Made for volunteer fire departments who need reliable alerting without subscription fees.
+# OpenAlert
