@@ -50,6 +50,15 @@ export async function loginAdmin(password: string): Promise<{ success: boolean; 
 }
 
 /**
+ * Clear local admin session (e.g. after 401). Does not call backend.
+ * Use this when the server returns session expired so the user can log in again.
+ */
+export function clearAdminSession(): void {
+  adminToken = null
+  localStorage.removeItem('adminToken')
+}
+
+/**
  * Logout admin
  */
 export async function logoutAdmin(): Promise<void> {
@@ -66,9 +75,7 @@ export async function logoutAdmin(): Promise<void> {
       console.error('Error during logout:', error)
     }
   }
-  
-  adminToken = null
-  localStorage.removeItem('adminToken')
+  clearAdminSession()
 }
 
 /**

@@ -81,7 +81,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // Admin password authentication (for web admin pages)
-// Simple in-memory session store (for production, use Redis or database)
+// Sessions persisted in SQLite so login survives backend restart
 interface AdminSession {
   token: string;
   expiresAt: number;
@@ -89,12 +89,41 @@ interface AdminSession {
 
 const adminSessions = new Map<string, AdminSession>();
 
-// Clean up expired sessions every 5 minutes
+// Load persisted sessions from database on startup
+try {
+  const rows = db.prepare('SELECT token, expires_at FROM admin_sessions WHERE expires_at > ?').all(Date.now()) as { token: string; expires_at: number }[];
+  for (const row of rows) {
+    adminSessions.set(row.token, { token: row.token, expiresAt: row.expires_at });
+  }
+  if (rows.length > 0) console.log(`📋 Restored ${rows.length} admin session(s) from database`);
+} catch (e) {
+  console.warn('Could not load admin sessions from database:', e);
+}
+
+function saveAdminSession(token: string, expiresAt: number): void {
+  adminSessions.set(token, { token, expiresAt });
+  try {
+    db.prepare('INSERT OR REPLACE INTO admin_sessions (token, expires_at) VALUES (?, ?)').run(token, expiresAt);
+  } catch (e) {
+    console.warn('Could not persist admin session:', e);
+  }
+}
+
+function deleteAdminSession(token: string): void {
+  adminSessions.delete(token);
+  try {
+    db.prepare('DELETE FROM admin_sessions WHERE token = ?').run(token);
+  } catch (e) {
+    console.warn('Could not delete admin session from database:', e);
+  }
+}
+
+// Clean up expired sessions every 5 minutes (memory and database)
 setInterval(() => {
   const now = Date.now();
   for (const [token, session] of adminSessions.entries()) {
     if (session.expiresAt < now) {
-      adminSessions.delete(token);
+      deleteAdminSession(token);
     }
   }
 }, 5 * 60 * 1000);
@@ -120,15 +149,21 @@ const validateAdminSession = (req: Request, res: Response, next: Function) => {
   const session = adminSessions.get(sessionToken);
   
   if (!session || session.expiresAt < Date.now()) {
-    adminSessions.delete(sessionToken);
+    deleteAdminSession(sessionToken);
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Invalid or expired admin session'
     });
   }
   
-  // Extend session
-  session.expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
+  // Extend session (24 hours from now)
+  const newExpiresAt = Date.now() + (24 * 60 * 60 * 1000);
+  session.expiresAt = newExpiresAt;
+  try {
+    db.prepare('UPDATE admin_sessions SET expires_at = ? WHERE token = ?').run(newExpiresAt, sessionToken);
+  } catch (e) {
+    console.warn('Could not update admin session expiry:', e);
+  }
   
   next();
 };
@@ -146,7 +181,7 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
       
-      adminSessions.set(token, { token, expiresAt });
+      saveAdminSession(token, expiresAt);
       
       return res.json({
         success: true,
@@ -168,7 +203,7 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
     
-    adminSessions.set(token, { token, expiresAt });
+    saveAdminSession(token, expiresAt);
     
     console.log('✅ Admin login successful');
     
@@ -192,7 +227,7 @@ app.post('/api/admin/logout', validateAdminSession, (req: Request, res: Response
   try {
     const sessionToken = req.headers['x-admin-token'] as string;
     if (sessionToken) {
-      adminSessions.delete(sessionToken);
+      deleteAdminSession(sessionToken);
     }
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {

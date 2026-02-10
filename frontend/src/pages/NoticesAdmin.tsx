@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin } from '../utils/adminAuth'
+import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin, clearAdminSession } from '../utils/adminAuth'
 
 interface Notice {
   id?: number
@@ -73,6 +73,7 @@ function NoticesAdmin() {
       })
       
       if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
         setLoading(false)
         return
@@ -162,6 +163,7 @@ function NoticesAdmin() {
       })
 
       if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
         alert('Session expired. Please log in again.')
         return
@@ -200,6 +202,7 @@ function NoticesAdmin() {
       })
 
       if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
         alert('Session expired. Please log in again.')
         return

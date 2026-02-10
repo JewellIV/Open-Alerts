@@ -96,6 +96,14 @@ db.exec(`
   )
 `);
 
+// Admin sessions (persisted so login survives backend restart)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    token TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+  )
+`);
+
 // Create index for faster analytics queries
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_analytics_timestamp ON alert_analytics(timestamp);
@@ -110,6 +118,6 @@ try {
   // Column already exists, ignore error
 }
 
-console.log('📊 Database tables initialized: alerts, notices, station_units, room_speakers, alert_analytics');
+console.log('📊 Database tables initialized: alerts, notices, station_units, room_speakers, alert_analytics, admin_sessions');
 
 export default db;

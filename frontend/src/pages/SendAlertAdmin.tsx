@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin } from '../utils/adminAuth'
+import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin, clearAdminSession } from '../utils/adminAuth'
 
 const CALL_TYPE_PRESETS = [
   'Admin Announcement',
@@ -72,6 +72,7 @@ function SendAlertAdmin() {
       })
 
       if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
         alert('Session expired. Please log in again.')
         return

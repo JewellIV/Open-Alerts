@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin } from '../utils/adminAuth'
+import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin, clearAdminSession } from '../utils/adminAuth'
 
 interface StationUnit {
   id?: number
@@ -45,9 +45,7 @@ function StationUnitsAdmin() {
     // Load backend URL from localStorage or env
     const savedBackendUrl = localStorage.getItem('backendUrl') || 'http://localhost:3000'
     setBackendUrl(savedBackendUrl)
-    
-    // Initialize admin auth
-    initializeAdminAuth()
+    initializeAdminAuth(savedBackendUrl)
     
     // Check if already logged in
     if (!isAdminLoggedIn()) {
@@ -71,6 +69,7 @@ function StationUnitsAdmin() {
         const data = await response.json()
         setUnits(data.units || [])
       } else if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -134,6 +133,7 @@ function StationUnitsAdmin() {
       })
       
       if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
         alert('Session expired. Please log in again.')
         return
@@ -180,6 +180,7 @@ function StationUnitsAdmin() {
       })
       
       if (response.status === 401) {
+        clearAdminSession()
         setShowPasswordInput(true)
         alert('Session expired. Please log in again.')
         return

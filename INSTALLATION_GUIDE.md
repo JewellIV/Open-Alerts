@@ -424,7 +424,13 @@ sudo apt install -y git
    
    Replace IP addresses with your network settings.
 
-6. **Start Backend Service:**
+6. **Install PM2 (if not already installed):**
+   ```bash
+   sudo npm install -g pm2
+   ```
+   If you get `pm2: command not found` after installing, either log out and back in, or run: `sudo env PATH=$PATH npm install -g pm2` and ensure `/usr/local/bin` (or the path npm reports) is in your PATH.
+
+7. **Start Backend Service:**
 
    Ensure the backend is built first (from project root):
    ```bash
@@ -774,6 +780,14 @@ curl -X POST http://192.168.1.100:3000/api/alert \
 ## Troubleshooting
 
 ### Common Issues
+
+#### "pm2: command not found"
+
+**Solutions:**
+1. Install PM2 globally: `sudo npm install -g pm2`
+2. If it still doesn't work, open a **new terminal** or log out and back in (PATH may not include npm global bin).
+3. Find where npm installs globals: `npm config get prefix` (often `/usr/local`). Ensure that path/bin (e.g. `/usr/local/bin`) is in your PATH.
+4. As a workaround you can run: `npx pm2 start ecosystem.config.cjs` (from project root; npx uses the local or global pm2).
 
 #### Display Not Showing Dashboard
 
