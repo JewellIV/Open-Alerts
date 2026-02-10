@@ -24,6 +24,7 @@ A free, self-hosted fire station alerting system designed for volunteer fire dep
 - **Philips Hue** - Smart light integration
 - **USB Serial** - Amplifier and device control
 - **GPIO Relays** - Per-room speaker control
+- **RGB LED Rings** - WS2812B/NeoPixel LED rings for visual alert indication
 
 ## 📋 Requirements
 
@@ -37,6 +38,7 @@ A free, self-hosted fire station alerting system designed for volunteer fire dep
 - GPIO relay modules (for room speaker control)
 - External speakers/amplifiers
 - Smart lights (Philips Hue, etc.)
+- RGB LED rings (WS2812B/NeoPixel) for visual alert indication
 
 ## 🚀 Quick Start
 
@@ -48,6 +50,9 @@ cd openalerts
 
 # Install backend dependencies
 npm install
+
+# On Raspberry Pi: npm install above also installs the onoff package for GPIO.
+# Run this in the project root on the Pi after clone/pull—do not copy node_modules from Windows.
 
 # Install frontend dependencies
 cd frontend
@@ -73,6 +78,12 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 # Room Speaker Configuration (optional)
 ROOM_SPEAKERS=room1:Engine 1|Ladder 2,room2:Medic 1|Medic 2
+
+# LED Ring Configuration (optional)
+LED_RING_ENABLED=true
+LED_RING_PIN=18
+LED_RING_COUNT=24
+LED_RING_BRIGHTNESS=128
 ```
 
 ### 3. Build Frontend
@@ -280,10 +291,11 @@ taskkill /PID <PID> /F
 4. Verify network connectivity
 
 ### GPIO Not Working
-1. Ensure running on Raspberry Pi
-2. Check `onoff` package is installed
-3. Verify GPIO pin numbers
-4. Check relay wiring
+1. **Run `npm install` in the project root on the Raspberry Pi** – The `onoff` package (for GPIO) is a dependency; it must be installed on the Pi. Do not copy `node_modules` from Windows; run `npm install` on the Pi after clone or pull.
+2. If you see "GPIO not available - onoff library may not be installed", run `npm install` in the project root, then restart the backend.
+3. If you see "Loaded 0 unit-to-pin mappings", add active units in the Station Units admin (e.g. Engine 1, Medic 2) so the backend can assign GPIO pins.
+4. Ensure running on Raspberry Pi (Linux); GPIO is not available on Windows.
+5. Verify GPIO pin numbers and relay wiring (see setup guides).
 
 See individual setup guides for detailed troubleshooting.
 
@@ -318,11 +330,11 @@ For issues, questions, or contributions:
 
 ## 🎯 Roadmap
 
-- [ ] Additional CAD system integrations
+- [x] Additional CAD system integrations ✅
 - [ ] Enhanced mobile app support
-- [ ] Advanced reporting and analytics
-- [ ] Multi-language support
-- [ ] Additional hardware integrations
+- [x] Advanced reporting and analytics ✅
+- [x] Multi-language support ✅
+- [x] Additional hardware integrations ✅ (Custom hardware support available)
 
 ---
 

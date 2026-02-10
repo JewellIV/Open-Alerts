@@ -380,6 +380,7 @@ sudo apt install -y git
    ```bash
    npm install
    ```
+   This installs the `onoff` package for GPIO relay control. **Always run `npm install` in the project root on the Pi** after clone or pull—do not copy `node_modules` from another machine. If you see "GPIO not available" or "Loaded 0 unit-to-pin mappings" at startup, run `npm install` here and add units in the Station Units admin, then restart the backend.
 
 3. **Configure Environment:**
    ```bash
