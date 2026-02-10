@@ -33,7 +33,12 @@ function StationUnitsAdmin() {
   const [showPasswordInput, setShowPasswordInput] = useState(false)
   const [editingUnit, setEditingUnit] = useState<StationUnit | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [backendUrl, setBackendUrl] = useState('http://localhost:3000')
+  // Initialize from localStorage or current origin so first request uses correct backend (avoids 401 on #station-units)
+  const [backendUrl, setBackendUrl] = useState(() =>
+    typeof window !== 'undefined'
+      ? (localStorage.getItem('backendUrl') || window.location.origin)
+      : 'http://localhost:3000'
+  )
   const [formData, setFormData] = useState<StationUnit>({
     unit_name: '',
     cad_code: null,
@@ -42,12 +47,10 @@ function StationUnitsAdmin() {
   })
 
   useEffect(() => {
-    // Load backend URL from localStorage or env
-    const savedBackendUrl = localStorage.getItem('backendUrl') || 'http://localhost:3000'
+    const savedBackendUrl = localStorage.getItem('backendUrl') || window.location.origin
     setBackendUrl(savedBackendUrl)
     initializeAdminAuth(savedBackendUrl)
     
-    // Check if already logged in
     if (!isAdminLoggedIn()) {
       setShowPasswordInput(true)
       setLoading(false)
