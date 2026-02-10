@@ -425,11 +425,29 @@ sudo apt install -y git
    Replace IP addresses with your network settings.
 
 6. **Start Backend Service:**
+
+   Ensure the backend is built first (from project root):
    ```bash
-   pm2 start npm --name "mvfd-backend" -- start
+   npm run build
+   ```
+
+   From the **project root** (e.g. `~/Open-Alerts` or `~/MVFD-Phoenix`), start with PM2:
+   ```bash
+   cd ~/Open-Alerts
+   # Or: cd ~/MVFD-Phoenix  (if that's your project folder name)
+
+   pm2 start ecosystem.config.cjs
    pm2 save
    pm2 startup
-   # Follow instructions to enable systemd service
+   # Follow the printed instructions to enable the systemd service
+   ```
+
+   If you prefer not to use the config file:
+   ```bash
+   cd ~/Open-Alerts
+   pm2 start npm --name "mvfd-backend" -- run start
+   pm2 save
+   pm2 startup
    ```
 
 **Checkpoint:** Backend server responds to `http://[BACKEND_IP]:3000/health`
