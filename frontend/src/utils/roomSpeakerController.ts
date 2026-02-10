@@ -17,6 +17,14 @@ export interface RoomConfig {
 let roomConfig: RoomConfig | null = null
 let isQuietMode = false
 let backendUrl = 'http://localhost:3000'
+let unitMapping: Record<string, string> = {} // CAD code -> display name (e.g. ENG2 -> Engine 2)
+
+/**
+ * Set unit mapping for CAD code resolution (call when station-units are loaded)
+ */
+export function setUnitMapping(mapping: Record<string, string>): void {
+  unitMapping = mapping || {}
+}
 
 /**
  * Initialize room speaker controller
@@ -169,8 +177,9 @@ export function shouldPlayAlertInRoom(alertUnits: string): boolean {
     return false
   }
   
-  // Parse units from alert (e.g., "Engine 1, Ladder 2, Medic 3" or "Station")
-  const alertUnitList = alertUnits.split(',').map(u => u.trim())
+  // Parse units from alert - resolve CAD codes to display names for matching
+  const rawAlertUnits = alertUnits.split(',').map(u => u.trim()).filter(u => u)
+  const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
   
   // Check if "Station" is in the alert units (station-wide alert)
   const isStationAlert = alertUnitList.some(unit => 

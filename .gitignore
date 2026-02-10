@@ -4,5 +4,4 @@ dist/
 *.db-journal
 .env
 .DS_Store
-*.md
-*.md
+recordings/

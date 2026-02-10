@@ -2,12 +2,16 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { exec } from 'child_process';
+import multer from 'multer';
 import db from './database';
 import { sendDiscordAlert, isDiscordConfigured } from './services/discordService';
 import { sendSlackAlert, isSlackConfigured } from './services/slackService';
 import { sendResgridAlert, isResgridConfigured, getResgridConfig } from './services/resgridService';
+import { getUnitDisplayMapping, resolveUnitsForDisplay } from './utils/unitResolution';
 
 dotenv.config();
 
@@ -42,6 +46,34 @@ app.use(express.json());
 // Serve frontend static files (for production/Raspberry Pi deployment)
 const frontendDistPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendDistPath));
+
+// Recordings directory for TwoToneDetect audio uploads
+const recordingsDir = path.join(process.cwd(), 'recordings');
+if (!fs.existsSync(recordingsDir)) {
+  fs.mkdirSync(recordingsDir, { recursive: true });
+  console.log('📁 Created recordings directory');
+}
+app.use('/recordings', express.static(recordingsDir));
+
+// Multer config for recording uploads
+const recordingStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, recordingsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.mp3';
+    const safeName = `alert_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+    cb(null, safeName);
+  },
+});
+const uploadRecording = multer({
+  storage: recordingStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.mp3', '.wav', '.amr', '.m4a'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error(`Invalid file type. Allowed: ${allowed.join(', ')}`));
+  },
+});
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
@@ -172,6 +204,71 @@ app.post('/api/admin/logout', validateAdminSession, (req: Request, res: Response
   }
 });
 
+// Admin send alert - manually trigger an alert to the system
+app.post('/api/admin/send-alert', validateAdminSession, (req: Request, res: Response) => {
+  try {
+    const { call_type, address, units, narrative } = req.body;
+
+    if (!call_type || !address || !units) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['call_type', 'address', 'units']
+      });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO alerts (call_type, address, units, narrative, source)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(call_type, address, units, narrative || null, 'admin');
+
+    const alert = {
+      id: result.lastInsertRowid,
+      timestamp: new Date().toISOString(),
+      call_type,
+      address,
+      units,
+      display_units: resolveUnitsForDisplay(units),
+      narrative: narrative || null,
+      recording_url: null
+    };
+
+    console.log('📢 Admin alert sent:', alert);
+
+    io.emit('dispatch_alert', alert);
+
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(call_type);
+      if (alertCategory === 'fire') {
+        if (ledRingController) flashLEDRing(255, 0, 0, 120000);
+        else controlLEDRingPython('fire');
+      } else {
+        if (ledRingController) flashLEDRing(0, 0, 255, 120000);
+        else controlLEDRingPython('ems');
+      }
+    }
+
+    const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (discordWebhookUrl) sendDiscordAlert(alert, discordWebhookUrl).catch(console.error);
+    const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+    if (slackWebhookUrl) sendSlackAlert(alert, slackWebhookUrl).catch(console.error);
+    const resgridConfig = getResgridConfig();
+    if (resgridConfig) sendResgridAlert(alert, resgridConfig).catch(console.error);
+
+    res.status(201).json({
+      success: true,
+      alert,
+      message: 'Alert sent to all displays'
+    });
+  } catch (error) {
+    console.error('Error sending admin alert:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Optional API key authentication middleware (for programmatic API access)
 const validateApiKey = (req: Request, res: Response, next: Function) => {
   const apiKey = process.env.API_KEY;
@@ -197,6 +294,120 @@ const validateApiKey = (req: Request, res: Response, next: Function) => {
 };
 
 
+// Helper function to determine alert category (fire vs EMS)
+function getCallTypeCategory(callType: string): 'fire' | 'ems' {
+  const lowerCallType = callType.toLowerCase();
+  
+  // Check for fire-related keywords
+  if (lowerCallType.includes('fire') || 
+      lowerCallType.includes('structure') ||
+      lowerCallType.includes('brush') ||
+      lowerCallType.includes('vehicle fire') ||
+      lowerCallType.includes('wildfire') ||
+      lowerCallType.includes('smoke')) {
+    return 'fire';
+  }
+  
+  // Default to EMS for medical calls
+  return 'ems';
+}
+
+// LED Ring Controller for WS2812B RGB LEDs
+let ledRingController: any = null;
+const LED_RING_PIN = parseInt(process.env.LED_RING_PIN || '18', 10);
+const LED_RING_COUNT = parseInt(process.env.LED_RING_COUNT || '24', 10);
+const LED_RING_ENABLED = process.env.LED_RING_ENABLED === 'true';
+
+// Initialize LED ring (only on Raspberry Pi)
+if (process.platform === 'linux' && LED_RING_ENABLED) {
+  try {
+    // Try to import rpi-ws281x (Node.js wrapper)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ws281x = require('rpi-ws281x-native');
+    
+    ws281x.init(LED_RING_COUNT, {
+      gpio: LED_RING_PIN,
+      brightness: parseInt(process.env.LED_RING_BRIGHTNESS || '128', 10), // 0-255
+      stripType: ws281x.stripType.WS2812B
+    });
+    
+    ledRingController = ws281x;
+    console.log(`✅ LED ring initialized: ${LED_RING_COUNT} LEDs on GPIO ${LED_RING_PIN}`);
+  } catch (error) {
+    console.warn('⚠️ LED ring Node.js library not available - will use Python script fallback');
+    console.warn('Install with: npm install rpi-ws281x');
+    console.warn('Or use Python script method (see LED_RING_INTEGRATION.md)');
+  }
+}
+
+// Helper function to set all LEDs to a color (Node.js method)
+function setLEDRingColor(r: number, g: number, b: number): void {
+  if (!ledRingController) return;
+  
+  try {
+    const colors = new Uint32Array(LED_RING_COUNT);
+    const color = (r << 16) | (g << 8) | b;
+    
+    for (let i = 0; i < LED_RING_COUNT; i++) {
+      colors[i] = color;
+    }
+    
+    ledRingController.render(colors);
+  } catch (error) {
+    console.error('Error setting LED ring color:', error);
+  }
+}
+
+// Helper function for flashing animation (Node.js method)
+function flashLEDRing(r: number, g: number, b: number, duration: number): void {
+  if (!ledRingController) return;
+  
+  const interval = 500; // Flash every 500ms
+  const iterations = Math.floor(duration / interval);
+  let count = 0;
+  
+  const flashInterval = setInterval(() => {
+    if (count % 2 === 0) {
+      setLEDRingColor(r, g, b); // On
+    } else {
+      setLEDRingColor(0, 0, 0); // Off
+    }
+    count++;
+    
+    if (count >= iterations * 2) {
+      clearInterval(flashInterval);
+      setLEDRingColor(0, 0, 0); // Turn off
+    }
+  }, interval / 2);
+}
+
+// Python script fallback method (more reliable)
+function controlLEDRingPython(action: string, r?: number, g?: number, b?: number, duration?: number): void {
+  if (!LED_RING_ENABLED) return;
+  
+  const scriptPath = path.join(__dirname, 'led_ring_controller.py');
+  let command = `python3 ${scriptPath} ${action}`;
+  
+  if (r !== undefined && g !== undefined && b !== undefined) {
+    command += ` ${r} ${g} ${b}`;
+    if (duration !== undefined) {
+      command += ` ${duration}`;
+    }
+  }
+  
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.warn('LED ring control error (Python):', error.message);
+      // Don't log stderr if script doesn't exist (expected on non-Pi systems)
+      if (!error.message.includes('ENOENT')) {
+        console.warn('LED ring stderr:', stderr);
+      }
+    } else if (stdout) {
+      console.log('LED ring:', stdout.trim());
+    }
+  });
+}
+
 // Alert ingestion endpoint
 app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
   try {
@@ -218,13 +429,14 @@ app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
       });
     }
 
-    // Insert alert into database
+    // Insert alert into database (with source tracking)
+    const source = req.body.source || 'api';
     const stmt = db.prepare(`
-      INSERT INTO alerts (call_type, address, units, narrative)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO alerts (call_type, address, units, narrative, source)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(call_type, address, units, narrative || null);
+    const result = stmt.run(call_type, address, units, narrative || null, source);
 
     const alert = {
       id: result.lastInsertRowid,
@@ -232,13 +444,35 @@ app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
       call_type,
       address,
       units,
-      narrative: narrative || null
+      display_units: resolveUnitsForDisplay(units),
+      narrative: narrative || null,
+      recording_url: null
     };
 
     console.log('Alert saved:', alert);
 
     // Emit socket event to all connected clients
     io.emit('dispatch_alert', alert);
+
+    // Control LED ring based on alert type
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(call_type);
+      if (alertCategory === 'fire') {
+        // Flash red for fire alerts
+        if (ledRingController) {
+          flashLEDRing(255, 0, 0, 120000); // Red, 2 minutes
+        } else {
+          controlLEDRingPython('fire');
+        }
+      } else {
+        // Flash blue for EMS alerts
+        if (ledRingController) {
+          flashLEDRing(0, 0, 255, 120000); // Blue, 2 minutes
+        } else {
+          controlLEDRingPython('ems');
+        }
+      }
+    }
 
     // Send to Discord webhook if configured (Phase 5)
     const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -276,6 +510,77 @@ app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error processing alert:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Alert with recording (TwoToneDetect post_email_command - record first, then send)
+app.post('/api/alert/with-recording', validateApiKey, uploadRecording.single('recording'), (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'Missing recording file',
+        message: 'Must include a recording file (mp3, wav, amr, m4a)'
+      });
+    }
+
+    const call_type = req.body.call_type || 'Dispatch';
+    const address = req.body.address || 'See narrative';
+    const units = req.body.units || 'See narrative';
+    const narrative = req.body.narrative || 'Two-tone page with recording';
+    const source = req.body.source || 'twotonedetect';
+
+    const recordingUrl = `/recordings/${req.file.filename}`;
+
+    const stmt = db.prepare(`
+      INSERT INTO alerts (call_type, address, units, narrative, source, recording_url)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(call_type, address, units, narrative, source, recordingUrl);
+
+    const alert = {
+      id: result.lastInsertRowid,
+      timestamp: new Date().toISOString(),
+      call_type,
+      address,
+      units,
+      display_units: resolveUnitsForDisplay(units),
+      narrative: narrative || null,
+      recording_url: recordingUrl
+    };
+
+    console.log('📥 Alert with recording saved:', { ...alert, recording: req.file.filename });
+
+    io.emit('dispatch_alert', alert);
+
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(call_type);
+      if (alertCategory === 'fire') {
+        if (ledRingController) flashLEDRing(255, 0, 0, 120000);
+        else controlLEDRingPython('fire');
+      } else {
+        if (ledRingController) flashLEDRing(0, 0, 255, 120000);
+        else controlLEDRingPython('ems');
+      }
+    }
+
+    const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (discordWebhookUrl) sendDiscordAlert(alert, discordWebhookUrl).catch(console.error);
+    const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+    if (slackWebhookUrl) sendSlackAlert(alert, slackWebhookUrl).catch(console.error);
+    const resgridConfig = getResgridConfig();
+    if (resgridConfig) sendResgridAlert(alert, resgridConfig).catch(console.error);
+
+    res.status(201).json({
+      success: true,
+      alert,
+      recording_url: recordingUrl
+    });
+  } catch (error) {
+    console.error('Error processing alert with recording:', error);
     res.status(500).json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -353,6 +658,7 @@ app.post('/api/webhook/activealerts', (req: Request, res: Response) => {
       call_type: transformedAlert.call_type,
       address: transformedAlert.address,
       units: transformedAlert.units,
+      display_units: resolveUnitsForDisplay(transformedAlert.units),
       narrative: transformedAlert.narrative || null
     };
 
@@ -360,6 +666,24 @@ app.post('/api/webhook/activealerts', (req: Request, res: Response) => {
 
     // Emit socket event to all connected clients
     io.emit('dispatch_alert', alert);
+
+    // Control LED ring based on alert type
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(transformedAlert.call_type);
+      if (alertCategory === 'fire') {
+        if (ledRingController) {
+          flashLEDRing(255, 0, 0, 120000);
+        } else {
+          controlLEDRingPython('fire');
+        }
+      } else {
+        if (ledRingController) {
+          flashLEDRing(0, 0, 255, 120000);
+        } else {
+          controlLEDRingPython('ems');
+        }
+      }
+    }
 
     // Send to Discord webhook if configured (Phase 5)
     const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -407,11 +731,254 @@ app.post('/api/webhook/activealerts', (req: Request, res: Response) => {
   }
 });
 
+// Import CAD integration services
+import {
+  FirehouseTransformer,
+  IamRespondingTransformer,
+  CentralSquareTransformer,
+  processCADAlert
+} from './services/cadIntegrations';
+
+// Firehouse Software webhook endpoint
+app.post('/api/webhook/firehouse', (req: Request, res: Response) => {
+  try {
+    console.log('📥 Firehouse Software webhook received:', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      body: req.body
+    });
+
+    const transformer = new FirehouseTransformer();
+    if (!transformer.validate(req.body)) {
+      return res.status(400).json({
+        error: 'Invalid webhook format',
+        message: 'Missing required fields for Firehouse Software format'
+      });
+    }
+
+    const transformedAlert = transformer.transform(req.body);
+    if (!transformedAlert) {
+      return res.status(400).json({
+        error: 'Transformation failed',
+        message: 'Could not transform Firehouse Software alert format'
+      });
+    }
+
+    const alert = processCADAlert(transformedAlert, 'firehouse');
+
+    // Emit socket event
+    io.emit('dispatch_alert', alert);
+
+    // Control LED ring based on alert type
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(alert.call_type);
+      if (alertCategory === 'fire') {
+        if (ledRingController) {
+          flashLEDRing(255, 0, 0, 120000);
+        } else {
+          controlLEDRingPython('fire');
+        }
+      } else {
+        if (ledRingController) {
+          flashLEDRing(0, 0, 255, 120000);
+        } else {
+          controlLEDRingPython('ems');
+        }
+      }
+    }
+
+    // Send to integrations
+    const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const resgridConfig = getResgridConfig();
+
+    if (discordWebhookUrl) {
+      sendDiscordAlert(alert, discordWebhookUrl).catch(console.error);
+    }
+    if (slackWebhookUrl) {
+      sendSlackAlert(alert, slackWebhookUrl).catch(console.error);
+    }
+    if (resgridConfig) {
+      sendResgridAlert(alert, resgridConfig).catch(console.error);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Firehouse Software alert processed successfully',
+      alert
+    });
+  } catch (error) {
+    console.error('❌ Error processing Firehouse Software webhook:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// IamResponding webhook endpoint
+app.post('/api/webhook/iamresponding', (req: Request, res: Response) => {
+  try {
+    console.log('📥 IamResponding webhook received:', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      body: req.body
+    });
+
+    const transformer = new IamRespondingTransformer();
+    if (!transformer.validate(req.body)) {
+      return res.status(400).json({
+        error: 'Invalid webhook format',
+        message: 'Missing required fields for IamResponding format'
+      });
+    }
+
+    const transformedAlert = transformer.transform(req.body);
+    if (!transformedAlert) {
+      return res.status(400).json({
+        error: 'Transformation failed',
+        message: 'Could not transform IamResponding alert format'
+      });
+    }
+
+    const alert = processCADAlert(transformedAlert, 'iamresponding');
+
+    // Emit socket event
+    io.emit('dispatch_alert', alert);
+
+    // Control LED ring based on alert type
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(alert.call_type);
+      if (alertCategory === 'fire') {
+        if (ledRingController) {
+          flashLEDRing(255, 0, 0, 120000);
+        } else {
+          controlLEDRingPython('fire');
+        }
+      } else {
+        if (ledRingController) {
+          flashLEDRing(0, 0, 255, 120000);
+        } else {
+          controlLEDRingPython('ems');
+        }
+      }
+    }
+
+    // Send to integrations
+    const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const resgridConfig = getResgridConfig();
+
+    if (discordWebhookUrl) {
+      sendDiscordAlert(alert, discordWebhookUrl).catch(console.error);
+    }
+    if (slackWebhookUrl) {
+      sendSlackAlert(alert, slackWebhookUrl).catch(console.error);
+    }
+    if (resgridConfig) {
+      sendResgridAlert(alert, resgridConfig).catch(console.error);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'IamResponding alert processed successfully',
+      alert
+    });
+  } catch (error) {
+    console.error('❌ Error processing IamResponding webhook:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// CentralSquare/TriTech webhook endpoint
+app.post('/api/webhook/centralsquare', (req: Request, res: Response) => {
+  try {
+    console.log('📥 CentralSquare/TriTech webhook received:', {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      body: req.body
+    });
+
+    const transformer = new CentralSquareTransformer();
+    if (!transformer.validate(req.body)) {
+      return res.status(400).json({
+        error: 'Invalid webhook format',
+        message: 'Missing required fields for CentralSquare/TriTech format'
+      });
+    }
+
+    const transformedAlert = transformer.transform(req.body);
+    if (!transformedAlert) {
+      return res.status(400).json({
+        error: 'Transformation failed',
+        message: 'Could not transform CentralSquare/TriTech alert format'
+      });
+    }
+
+    const alert = processCADAlert(transformedAlert, 'centralsquare');
+
+    // Emit socket event
+    io.emit('dispatch_alert', alert);
+
+    // Control LED ring based on alert type
+    if (LED_RING_ENABLED) {
+      const alertCategory = getCallTypeCategory(alert.call_type);
+      if (alertCategory === 'fire') {
+        if (ledRingController) {
+          flashLEDRing(255, 0, 0, 120000);
+        } else {
+          controlLEDRingPython('fire');
+        }
+      } else {
+        if (ledRingController) {
+          flashLEDRing(0, 0, 255, 120000);
+        } else {
+          controlLEDRingPython('ems');
+        }
+      }
+    }
+
+    // Send to integrations
+    const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const resgridConfig = getResgridConfig();
+
+    if (discordWebhookUrl) {
+      sendDiscordAlert(alert, discordWebhookUrl).catch(console.error);
+    }
+    if (slackWebhookUrl) {
+      sendSlackAlert(alert, slackWebhookUrl).catch(console.error);
+    }
+    if (resgridConfig) {
+      sendResgridAlert(alert, resgridConfig).catch(console.error);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'CentralSquare/TriTech alert processed successfully',
+      alert
+    });
+  } catch (error) {
+    console.error('❌ Error processing CentralSquare/TriTech webhook:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Get all alerts endpoint (for testing/debugging)
 app.get('/api/alerts', (req: Request, res: Response) => {
   try {
     const stmt = db.prepare('SELECT * FROM alerts ORDER BY timestamp DESC LIMIT 100');
-    const alerts = stmt.all();
+    const rows = stmt.all() as any[];
+    const alerts = rows.map(a => ({
+      ...a,
+      display_units: resolveUnitsForDisplay(a.units || '')
+    }));
     res.json({ alerts });
   } catch (error) {
     console.error('Error fetching alerts:', error);
@@ -1256,6 +1823,129 @@ app.get('/api/room-speakers', validateAdminSession, (req: Request, res: Response
   }
 });
 
+// Import reporting service
+import {
+  getAlertStatistics,
+  getUnitStatistics,
+  getAlertsForExport,
+  getGeographicDistribution
+} from './services/reportingService';
+
+// Reporting and Analytics Endpoints
+app.get('/api/reports/statistics', validateAdminSession, (req: Request, res: Response) => {
+  try {
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
+    const timeRange = (startDate && endDate) ? { startDate, endDate } : undefined;
+    const stats = getAlertStatistics(timeRange);
+
+    res.json({
+      success: true,
+      statistics: stats,
+      timeRange: timeRange || 'all'
+    });
+  } catch (error) {
+    console.error('Error getting statistics:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/reports/units', validateAdminSession, (req: Request, res: Response) => {
+  try {
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
+    const timeRange = (startDate && endDate) ? { startDate, endDate } : undefined;
+    const unitStats = getUnitStatistics(timeRange);
+
+    res.json({
+      success: true,
+      units: unitStats,
+      timeRange: timeRange || 'all'
+    });
+  } catch (error) {
+    console.error('Error getting unit statistics:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/reports/geographic', validateAdminSession, (req: Request, res: Response) => {
+  try {
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
+    const timeRange = (startDate && endDate) ? { startDate, endDate } : undefined;
+    const distribution = getGeographicDistribution(timeRange);
+
+    res.json({
+      success: true,
+      distribution,
+      timeRange: timeRange || 'all'
+    });
+  } catch (error) {
+    console.error('Error getting geographic distribution:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/reports/export', validateAdminSession, (req: Request, res: Response) => {
+  try {
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const format = (req.query.format as string) || 'json';
+
+    const timeRange = (startDate && endDate) ? { startDate, endDate } : undefined;
+    const alerts = getAlertsForExport(timeRange);
+
+    if (format === 'csv') {
+      // Generate CSV
+      const headers = ['ID', 'Timestamp', 'Call Type', 'Address', 'Units', 'Narrative', 'Source'];
+      const rows = alerts.map(a => [
+        a.id,
+        a.timestamp,
+        a.call_type,
+        a.address,
+        a.units,
+        a.narrative || '',
+        a.source || 'api'
+      ]);
+
+      const csv = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=alerts_${Date.now()}.csv`);
+      res.send(csv);
+    } else {
+      // JSON format (default)
+      res.json({
+        success: true,
+        alerts,
+        count: alerts.length,
+        timeRange: timeRange || 'all'
+      });
+    }
+  } catch (error) {
+    console.error('Error exporting alerts:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Get unit-to-pin mappings
 app.get('/api/unit-pins', validateAdminSession, (req: Request, res: Response) => {
   try {
@@ -1394,13 +2084,90 @@ app.get('/api/room-speaker/:roomId/assign', (req: Request, res: Response) => {
   }
 });
 
+// LED Ring Control Endpoints
+app.post('/api/led-ring/:action', validateApiKey, (req: Request, res: Response) => {
+  try {
+    const { action } = req.params;
+    const { r, g, b, duration } = req.body;
+    
+    if (!LED_RING_ENABLED) {
+      return res.status(503).json({ error: 'LED ring not enabled' });
+    }
+    
+    switch (action) {
+      case 'set':
+        if (ledRingController) {
+          setLEDRingColor(r || 0, g || 0, b || 0);
+        } else {
+          controlLEDRingPython('set', r || 0, g || 0, b || 0);
+        }
+        res.json({ success: true, action: 'set', color: { r, g, b } });
+        break;
+        
+      case 'flash':
+        const flashDuration = duration || 5000;
+        if (ledRingController) {
+          flashLEDRing(r || 255, g || 0, b || 0, flashDuration);
+        } else {
+          controlLEDRingPython('flash', r || 255, g || 0, b || 0, flashDuration);
+        }
+        res.json({ success: true, action: 'flash', duration: flashDuration });
+        break;
+        
+      case 'off':
+        if (ledRingController) {
+          setLEDRingColor(0, 0, 0);
+        } else {
+          controlLEDRingPython('off');
+        }
+        res.json({ success: true, action: 'off' });
+        break;
+        
+      case 'fire':
+        if (ledRingController) {
+          flashLEDRing(255, 0, 0, 120000); // Red flash for 2 minutes
+        } else {
+          controlLEDRingPython('fire');
+        }
+        res.json({ success: true, action: 'fire' });
+        break;
+        
+      case 'ems':
+        if (ledRingController) {
+          flashLEDRing(0, 0, 255, 120000); // Blue flash for 2 minutes
+        } else {
+          controlLEDRingPython('ems');
+        }
+        res.json({ success: true, action: 'ems' });
+        break;
+        
+      default:
+        res.status(400).json({ error: 'Invalid action' });
+    }
+  } catch (error) {
+    console.error('Error controlling LED ring:', error);
+    res.status(500).json({ error: 'Failed to control LED ring' });
+  }
+});
+
+app.get('/api/led-ring/status', (req: Request, res: Response) => {
+  res.json({
+    enabled: LED_RING_ENABLED,
+    available: LED_RING_ENABLED && (ledRingController !== null || process.platform === 'linux'),
+    pin: LED_RING_PIN,
+    count: LED_RING_COUNT,
+    method: ledRingController ? 'nodejs' : 'python'
+  });
+});
+
 // Station Units Management Endpoints
 // Public endpoint to get active units (for unit selector on displays)
 app.get('/api/station-units', (req: Request, res: Response) => {
   try {
     const stmt = db.prepare('SELECT * FROM station_units WHERE is_active = 1 ORDER BY unit_name ASC');
     const units = stmt.all();
-    res.json({ success: true, units });
+    const unitMapping = getUnitDisplayMapping();
+    res.json({ success: true, units, unit_mapping: unitMapping });
   } catch (error) {
     console.error('Error fetching station units:', error);
     res.status(500).json({
@@ -1412,7 +2179,7 @@ app.get('/api/station-units', (req: Request, res: Response) => {
 
 app.post('/api/station-units', validateApiKey, (req: Request, res: Response) => {
   try {
-    const { unit_name, unit_type, description } = req.body;
+    const { unit_name, unit_type, description, cad_code } = req.body;
     
     if (!unit_name || unit_name.trim() === '') {
       return res.status(400).json({
@@ -1422,17 +2189,23 @@ app.post('/api/station-units', validateApiKey, (req: Request, res: Response) => 
     }
     
     const stmt = db.prepare(`
-      INSERT INTO station_units (unit_name, unit_type, description)
-      VALUES (?, ?, ?)
+      INSERT INTO station_units (unit_name, unit_type, description, cad_code)
+      VALUES (?, ?, ?, ?)
     `);
     
-    const result = stmt.run(unit_name.trim(), unit_type || null, description || null);
+    const result = stmt.run(
+      unit_name.trim(),
+      unit_type || null,
+      description || null,
+      cad_code && typeof cad_code === 'string' ? cad_code.trim() || null : null
+    );
     
     const unit = {
       id: result.lastInsertRowid,
       unit_name: unit_name.trim(),
       unit_type: unit_type || null,
       description: description || null,
+      cad_code: cad_code && typeof cad_code === 'string' ? cad_code.trim() || null : null,
       is_active: 1
     };
     
@@ -1456,11 +2229,11 @@ app.post('/api/station-units', validateApiKey, (req: Request, res: Response) => 
 app.put('/api/station-units/:id', validateAdminSession, (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { unit_name, unit_type, description, is_active } = req.body;
+    const { unit_name, unit_type, description, cad_code, is_active } = req.body;
     
     const stmt = db.prepare(`
       UPDATE station_units
-      SET unit_name = ?, unit_type = ?, description = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+      SET unit_name = ?, unit_type = ?, description = ?, cad_code = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     
@@ -1468,6 +2241,7 @@ app.put('/api/station-units/:id', validateAdminSession, (req: Request, res: Resp
       unit_name || null,
       unit_type || null,
       description || null,
+      cad_code && typeof cad_code === 'string' ? cad_code.trim() || null : null,
       is_active !== undefined ? (is_active ? 1 : 0) : 1,
       id
     );

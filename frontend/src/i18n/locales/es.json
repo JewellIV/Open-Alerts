@@ -1,0 +1,115 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "close": "Cerrar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "previous": "Anterior"
+  },
+  "alerts": {
+    "structureFire": "Incendio Estructural",
+    "medicalEmergency": "Emergencia Médica",
+    "motorVehicleAccident": "Accidente de Vehículo Motor",
+    "brushFire": "Incendio de Matorrales",
+    "hazmat": "Materiales Peligrosos",
+    "rescue": "Rescate",
+    "alarm": "Alarma",
+    "dispatch": "Despacho",
+    "unknown": "Desconocido"
+  },
+  "dashboard": {
+    "title": "Panel de OpenAlerts",
+    "idleScreen": "Pantalla en Espera",
+    "activeAlert": "Alerta Activa",
+    "dismissAlert": "Descartar Alerta",
+    "noActiveAlerts": "No Hay Alertas Activas",
+    "connectionStatus": "Estado de Conexión",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "reconnecting": "Reconectando"
+  },
+  "roomDisplay": {
+    "title": "Pantalla de Sala",
+    "selectUnits": "Seleccionar Unidades",
+    "quietMode": "Modo Silencioso",
+    "quietModeEnabled": "Modo Silencioso Activado",
+    "quietModeDisabled": "Modo Silencioso Desactivado",
+    "noUnitsSelected": "No se seleccionaron unidades - esta sala reproducirá TODAS las alertas",
+    "unitsSelected": "{{count}} unidad(es) seleccionada(s)"
+  },
+  "admin": {
+    "login": "Iniciar Sesión",
+    "logout": "Cerrar Sesión",
+    "password": "Contraseña",
+    "enterPassword": "Ingrese la contraseña de administrador",
+    "loginRequired": "Se Requiere Inicio de Sesión de Administrador",
+    "invalidPassword": "Contraseña inválida",
+    "sessionExpired": "Sesión expirada. Por favor, inicie sesión nuevamente."
+  },
+  "notices": {
+    "title": "Avisos",
+    "noNotices": "No hay avisos en este momento",
+    "addNotice": "Agregar Aviso",
+    "editNotice": "Editar Aviso",
+    "deleteNotice": "Eliminar Aviso"
+  },
+  "units": {
+    "title": "Unidades de la Estación",
+    "addUnit": "Agregar Unidad",
+    "unitName": "Nombre de la Unidad",
+    "unitType": "Tipo de Unidad",
+    "description": "Descripción",
+    "isActive": "Activo",
+    "noUnits": "No hay unidades configuradas"
+  },
+  "roomSpeakers": {
+    "title": "Control de Altavoces de Sala",
+    "roomId": "ID de Sala",
+    "roomName": "Nombre de la Sala",
+    "assignedUnits": "Unidades Asignadas",
+    "onlyAlertsForUnits": "Solo las alertas para estas unidades se reproducirán en esta sala",
+    "quickSelect": "Selección Rápida",
+    "customUnit": "Unidad Personalizada",
+    "enterCustomUnit": "Ingrese el nombre de la unidad personalizada",
+    "add": "Agregar",
+    "saveConfiguration": "Guardar Configuración",
+    "currentStatus": "Estado Actual de la Sala",
+    "allRoomsControl": "Control de Todas las Salas",
+    "mute": "Silenciar",
+    "unmute": "Activar Sonido"
+  },
+  "weather": {
+    "loading": "Cargando clima...",
+    "error": "Clima no disponible",
+    "radar": "Radar",
+    "live": "En Vivo"
+  },
+  "reports": {
+    "title": "Informes y Análisis",
+    "statistics": "Estadísticas",
+    "unitStatistics": "Estadísticas de Unidades",
+    "geographicDistribution": "Distribución Geográfica",
+    "export": "Exportar",
+    "totalAlerts": "Total de Alertas",
+    "alertsByType": "Alertas por Tipo",
+    "alertsByHour": "Alertas por Hora",
+    "alertsByDay": "Alertas por Día",
+    "alertsByMonth": "Alertas por Mes",
+    "averagePerDay": "Promedio de Alertas por Día",
+    "mostCommonCallType": "Tipo de Llamada Más Común",
+    "busiestHour": "Hora Más Ocupada",
+    "busiestDay": "Día Más Ocupado",
+    "exportCSV": "Exportar como CSV",
+    "exportJSON": "Exportar como JSON",
+    "dateRange": "Rango de Fechas",
+    "startDate": "Fecha de Inicio",
+    "endDate": "Fecha de Fin",
+    "allTime": "Todo el Tiempo"
+  }
+}

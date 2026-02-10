@@ -1,0 +1,115 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous"
+  },
+  "alerts": {
+    "structureFire": "Structure Fire",
+    "medicalEmergency": "Medical Emergency",
+    "motorVehicleAccident": "Motor Vehicle Accident",
+    "brushFire": "Brush Fire",
+    "hazmat": "Hazmat",
+    "rescue": "Rescue",
+    "alarm": "Alarm",
+    "dispatch": "Dispatch",
+    "unknown": "Unknown"
+  },
+  "dashboard": {
+    "title": "OpenAlerts Dashboard",
+    "idleScreen": "Idle Screen",
+    "activeAlert": "Active Alert",
+    "dismissAlert": "Dismiss Alert",
+    "noActiveAlerts": "No Active Alerts",
+    "connectionStatus": "Connection Status",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "reconnecting": "Reconnecting"
+  },
+  "roomDisplay": {
+    "title": "Room Display",
+    "selectUnits": "Select Units",
+    "quietMode": "Quiet Mode",
+    "quietModeEnabled": "Quiet Mode Enabled",
+    "quietModeDisabled": "Quiet Mode Disabled",
+    "noUnitsSelected": "No units selected - this room will play ALL alerts",
+    "unitsSelected": "{{count}} unit(s) selected"
+  },
+  "admin": {
+    "login": "Login",
+    "logout": "Logout",
+    "password": "Password",
+    "enterPassword": "Enter admin password",
+    "loginRequired": "Admin Login Required",
+    "invalidPassword": "Invalid password",
+    "sessionExpired": "Session expired. Please log in again."
+  },
+  "notices": {
+    "title": "Notices",
+    "noNotices": "No notices at this time",
+    "addNotice": "Add Notice",
+    "editNotice": "Edit Notice",
+    "deleteNotice": "Delete Notice"
+  },
+  "units": {
+    "title": "Station Units",
+    "addUnit": "Add Unit",
+    "unitName": "Unit Name",
+    "unitType": "Unit Type",
+    "description": "Description",
+    "isActive": "Active",
+    "noUnits": "No units configured"
+  },
+  "roomSpeakers": {
+    "title": "Room Speaker Control",
+    "roomId": "Room ID",
+    "roomName": "Room Name",
+    "assignedUnits": "Assigned Units",
+    "onlyAlertsForUnits": "Only alerts for these units will play in this room",
+    "quickSelect": "Quick Select",
+    "customUnit": "Custom Unit",
+    "enterCustomUnit": "Enter custom unit name",
+    "add": "Add",
+    "saveConfiguration": "Save Configuration",
+    "currentStatus": "Current Room Status",
+    "allRoomsControl": "All Rooms Control",
+    "mute": "Mute",
+    "unmute": "Unmute"
+  },
+  "weather": {
+    "loading": "Loading weather...",
+    "error": "Weather unavailable",
+    "radar": "Radar",
+    "live": "Live"
+  },
+  "reports": {
+    "title": "Reports & Analytics",
+    "statistics": "Statistics",
+    "unitStatistics": "Unit Statistics",
+    "geographicDistribution": "Geographic Distribution",
+    "export": "Export",
+    "totalAlerts": "Total Alerts",
+    "alertsByType": "Alerts by Type",
+    "alertsByHour": "Alerts by Hour",
+    "alertsByDay": "Alerts by Day",
+    "alertsByMonth": "Alerts by Month",
+    "averagePerDay": "Average Alerts Per Day",
+    "mostCommonCallType": "Most Common Call Type",
+    "busiestHour": "Busiest Hour",
+    "busiestDay": "Busiest Day",
+    "exportCSV": "Export as CSV",
+    "exportJSON": "Export as JSON",
+    "dateRange": "Date Range",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "allTime": "All Time"
+  }
+}

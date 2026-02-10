@@ -4,6 +4,7 @@ import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logo
 interface StationUnit {
   id?: number
   unit_name: string
+  cad_code?: string | null
   unit_type?: string | null
   description?: string | null
   is_active?: number
@@ -35,6 +36,7 @@ function StationUnitsAdmin() {
   const [backendUrl, setBackendUrl] = useState('http://localhost:3000')
   const [formData, setFormData] = useState<StationUnit>({
     unit_name: '',
+    cad_code: null,
     unit_type: null,
     description: null
   })
@@ -141,7 +143,7 @@ function StationUnitsAdmin() {
         await fetchUnits()
         setShowForm(false)
         setEditingUnit(null)
-        setFormData({ unit_name: '', unit_type: null, description: null })
+        setFormData({ unit_name: '', cad_code: null, unit_type: null, description: null })
       } else {
         const error = await response.json()
         alert(`Error: ${error.message || 'Failed to save unit'}`)
@@ -156,6 +158,7 @@ function StationUnitsAdmin() {
     setEditingUnit(unit)
     setFormData({
       unit_name: unit.unit_name,
+      cad_code: unit.cad_code || null,
       unit_type: unit.unit_type || null,
       description: unit.description || null
     })
@@ -196,7 +199,7 @@ function StationUnitsAdmin() {
   const handleCancel = () => {
     setShowForm(false)
     setEditingUnit(null)
-    setFormData({ unit_name: '', unit_type: null, description: null })
+    setFormData({ unit_name: '', cad_code: null, unit_type: null, description: null })
   }
 
 
@@ -247,12 +250,12 @@ function StationUnitsAdmin() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-bold">Station Units Management</h1>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
                 setShowForm(true)
                 setEditingUnit(null)
-                setFormData({ unit_name: '', unit_type: null, description: null })
+                setFormData({ unit_name: '', cad_code: null, unit_type: null, description: null })
               }}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
             >
@@ -289,15 +292,28 @@ function StationUnitsAdmin() {
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block mb-2 font-semibold">Unit Name *</label>
+                <label className="block mb-2 font-semibold">Display Name *</label>
                 <input
                   type="text"
                   value={formData.unit_name}
                   onChange={(e) => setFormData({ ...formData, unit_name: e.target.value })}
-                  placeholder="e.g., Engine 1"
+                  placeholder="e.g., Engine 2"
                   required
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                 />
+                <p className="text-xs text-gray-400 mt-1">Shown on displays and in announcements</p>
+              </div>
+
+              <div>
+                <label className="block mb-2 font-semibold">CAD Code</label>
+                <input
+                  type="text"
+                  value={formData.cad_code || ''}
+                  onChange={(e) => setFormData({ ...formData, cad_code: e.target.value || null })}
+                  placeholder="e.g., ENG2"
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+                <p className="text-xs text-gray-400 mt-1">Code from CAD/dispatch (e.g., ENG2, LAD1). Leave empty if same as display name.</p>
               </div>
 
               <div>
@@ -363,6 +379,11 @@ function StationUnitsAdmin() {
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <h3 className="font-semibold text-lg">{unit.unit_name}</h3>
+                      {unit.cad_code && (
+                        <span className="text-xs text-gray-500 bg-gray-600 px-2 py-1 rounded mt-1 mr-2 inline-block">
+                          {unit.cad_code}
+                        </span>
+                      )}
                       {unit.unit_type && (
                         <span className="text-xs text-gray-400 bg-gray-600 px-2 py-1 rounded mt-1 inline-block">
                           {unit.unit_type}
@@ -397,11 +418,10 @@ function StationUnitsAdmin() {
         <div className="mt-6 bg-blue-900 border border-blue-700 rounded-lg p-6">
           <h3 className="font-semibold mb-2">📋 Instructions</h3>
           <ul className="list-disc list-inside space-y-2 text-sm text-gray-300">
-            <li>Add all units that belong to your station</li>
-            <li>Unit names should match exactly how they appear in dispatch alerts</li>
-            <li>Use unit types to categorize units (Engine, Ladder, Medic, etc.)</li>
-            <li>These units can be assigned to rooms in the Room Speaker Admin</li>
-            <li>Units are used for unit-based alert routing</li>
+            <li><strong>Display Name</strong> – Shown on alerts (e.g., Engine 2)</li>
+            <li><strong>CAD Code</strong> – Code from your dispatch system (e.g., ENG2). Enables mapping: ENG2 → Engine 2</li>
+            <li>Assign units to rooms in Room Speaker Admin for unit-based alert routing</li>
+            <li>Room matching works with both CAD codes and display names</li>
           </ul>
         </div>
       </div>

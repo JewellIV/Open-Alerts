@@ -59,6 +59,69 @@ Body Template:
 }
 ```
 
+#### Receiving Admin Messages from TwoToneDetect
+
+TwoToneDetect does not have built-in webhook support. To receive **admin pages** (or any tone set) in OpenAlerts, use the `alert_command` in your `tones.cfg` to run a script that POSTs to the API.
+
+**Included scripts:** `scripts/twotonedetect-alert.py` (Python) or `scripts/twotonedetect-alert.ps1` (PowerShell)
+
+**Setup:**
+
+1. **Copy the script** to your TwoToneDetect computer (or a shared location).
+2. **Edit the configuration** at the top of the script:
+   - **Python:** `SERVER_URL` and `API_KEY`
+   - **PowerShell:** `$serverUrl` and `$apiKey`
+   - Set to your OpenAlerts server (e.g. `http://192.168.1.100:3000`), leave API key empty if not used
+3. **Add an admin tone set** in `tones.cfg`:
+   ```ini
+   [ToneSet7]
+   Tone1 = 1000          # Your admin tone 1 frequency (Hz)
+   Tone2 = 800           # Your admin tone 2 frequency (Hz)
+   Tone1Length = 2
+   Tone2Length = 2
+   description = Admin Page
+   # Python:
+   alert_command = python C:\path\to\scripts\twotonedetect-alert.py admin
+   # Or PowerShell:
+   # alert_command = C:\path\to\scripts\twotonedetect-alert.ps1 admin
+   ```
+4. **For regular dispatch** tone sets, use the script without the `admin` parameter:
+   ```ini
+   alert_command = python C:\path\to\scripts\twotonedetect-alert.py
+   ```
+
+**Usage:**
+- `twotonedetect-alert.py admin` → Sends as "Admin Page" to OpenAlerts
+- `twotonedetect-alert.py` → Sends as generic "Dispatch"
+- `twotonedetect-alert.py "EMS Rescue"` → Sends with custom call type
+
+#### Sending Alerts WITH Recording (Record First, Then Send)
+
+To **record the voice dispatch** before sending the alert, use `post_email_command` instead of `alert_command`. TwoToneDetect records the message after the tones, then runs your script with the recording file path.
+
+**tones.cfg setup:**
+```ini
+[ToneSet1]
+Tone1 = 1000
+Tone2 = 800
+Tone1Length = 2
+Tone2Length = 2
+description = Structure Fire
+# Use post_email_command - runs AFTER recording is saved
+post_email_command = python C:\path\to\scripts\twotonedetect-alert.py "Structure Fire" [mp3]
+```
+
+TwoToneDetect substitutes `[mp3]` with the path to the recorded file. Use `[wav]` or `[amr]` if your TTD config uses those formats.
+
+**What happens:**
+1. TwoToneDetect detects tones
+2. TwoToneDetect records the voice message
+3. TwoToneDetect runs the script with the recording path
+4. Script uploads alert + recording to OpenAlerts
+5. Dashboard displays the alert with an audio player to hear the recording
+
+Recordings are stored in the `recordings/` folder and served at `/recordings/filename.mp3`.
+
 ### Option 2: ActiveAlerts/Active911 Integration
 
 **Yes! You can forward alerts from ActiveAlerts/Active911 directly to OpenAlerts.**
@@ -106,11 +169,46 @@ If you have a Computer-Aided Dispatch (CAD) system, you can configure it to send
 
 **Common CAD Systems:**
 - **Resgrid** (see below for detailed integration)
-- **IamResponding**
-- **Firehouse Software**
-- **Custom CAD Systems**
+- **Firehouse Software** (dedicated endpoint - see below)
+- **IamResponding** (dedicated endpoint - see below)
+- **CentralSquare/TriTech** (dedicated endpoint - see below)
+- **Custom CAD Systems** (use generic endpoint)
 
-**Generic CAD Webhook Setup:**
+#### Firehouse Software Integration
+
+**Dedicated Endpoint:** `POST http://YOUR_SERVER_IP:3000/api/webhook/firehouse`
+
+**Setup:**
+1. In Firehouse Software, configure webhook to: `http://YOUR_SERVER_IP:3000/api/webhook/firehouse`
+2. Method: POST
+3. Format: JSON
+4. **No field mapping needed** - automatic conversion!
+
+The system automatically converts Firehouse format to OpenAlerts format.
+
+#### IamResponding Integration
+
+**Dedicated Endpoint:** `POST http://YOUR_SERVER_IP:3000/api/webhook/iamresponding`
+
+**Setup:**
+1. In IamResponding, configure webhook to: `http://YOUR_SERVER_IP:3000/api/webhook/iamresponding`
+2. Method: POST
+3. Format: JSON
+4. **No field mapping needed** - automatic conversion!
+
+#### CentralSquare/TriTech Integration
+
+**Dedicated Endpoint:** `POST http://YOUR_SERVER_IP:3000/api/webhook/centralsquare`
+
+**Setup:**
+1. In CentralSquare/TriTech, configure webhook to: `http://YOUR_SERVER_IP:3000/api/webhook/centralsquare`
+2. Method: POST
+3. Format: JSON
+4. **No field mapping needed** - automatic conversion!
+
+#### Generic CAD Webhook Setup
+
+For other CAD systems:
 1. Find webhook/API settings in your CAD system
 2. Configure webhook URL: `http://YOUR_SERVER_IP:3000/api/alert`
 3. Map CAD fields to OpenAlerts format:

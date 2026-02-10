@@ -10,7 +10,9 @@ interface Alert {
   call_type: string
   address: string
   units: string
+  display_units?: string | null
   narrative: string | null
+  recording_url?: string | null
 }
 
 interface ActiveScreenProps {
@@ -101,58 +103,72 @@ function ActiveScreen({ alert, onDismiss }: ActiveScreenProps) {
   }
 
   return (
-    <div className="h-full w-full bg-gray-900 text-white relative overflow-hidden">
+    <div className="h-full w-full bg-gray-900 text-white relative overflow-auto min-h-0">
       {/* Flashing Border - Red for Fire, Blue for EMS */}
-      <div className={`absolute inset-0 border-8 ${borderColor} animate-pulse`}></div>
+      <div className={`absolute inset-0 border-4 sm:border-8 ${borderColor} animate-pulse pointer-events-none`}></div>
       
-      {/* Alert Content - Split Layout */}
-      <div className="h-full w-full flex relative z-10">
-        {/* Left Side - Alert Details */}
-        <div className="flex-1 flex flex-col items-center justify-center p-8">
+      {/* Alert Content - Responsive Split Layout */}
+      <div className="min-h-full w-full flex flex-col lg:flex-row relative z-10">
+        {/* Alert Details - scrollable on small screens */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 min-h-0 overflow-y-auto">
           {/* Header */}
-          <div className={`text-7xl font-bold ${alertColor} mb-6 animate-pulse`}>
+          <div className={`text-4xl sm:text-5xl lg:text-7xl font-bold ${alertColor} mb-4 sm:mb-6 animate-pulse`}>
             ALERT
           </div>
 
           {/* Call Type */}
-          <div className={`text-5xl font-bold ${alertColor} mb-8 text-center`}>
+          <div className={`text-2xl sm:text-4xl lg:text-5xl font-bold ${alertColor} mb-4 sm:mb-8 text-center`}>
             {alert.call_type}
           </div>
 
           {/* Address */}
-          <div className="text-4xl font-semibold text-yellow-400 mb-6 text-center">
+          <div className="text-xl sm:text-3xl lg:text-4xl font-semibold text-yellow-400 mb-4 sm:mb-6 text-center">
             {alert.address}
           </div>
 
-          {/* Units */}
-          <div className="text-3xl font-medium text-blue-400 mb-6 text-center">
-            {alert.units}
+          {/* Units (display names from CAD code mapping) */}
+          <div className="text-lg sm:text-2xl lg:text-3xl font-medium text-blue-400 mb-4 sm:mb-6 text-center">
+            {alert.display_units || alert.units}
           </div>
 
           {/* Narrative */}
           {alert.narrative && (
-            <div className="text-2xl text-gray-300 mb-6 text-center max-w-3xl">
+            <div className="text-base sm:text-xl lg:text-2xl text-gray-300 mb-4 sm:mb-6 text-center max-w-3xl w-full px-2">
               {alert.narrative}
             </div>
           )}
 
+          {/* Recording playback (TwoToneDetect) */}
+          {alert.recording_url && (
+            <div className="mb-4 sm:mb-6 w-full max-w-xl px-2">
+              <p className="text-xs sm:text-sm text-gray-400 mb-2">Recorded dispatch</p>
+              <audio
+                controls
+                className="w-full h-10 sm:h-12"
+                src={`${(import.meta as any).env?.VITE_BACKEND_URL || localStorage.getItem('backendUrl') || 'http://localhost:3000'}${alert.recording_url}`}
+              >
+                Your browser does not support the audio element.
+              </audio>
+            </div>
+          )}
+
           {/* Timestamp */}
-          <div className="text-xl text-gray-500 mt-4">
+          <div className="text-sm sm:text-lg lg:text-xl text-gray-500 mt-2 sm:mt-4">
             {formatTimestamp(alert.timestamp)}
           </div>
 
           {/* Dismiss Button */}
           <button
             onClick={onDismiss}
-            className="mt-8 px-8 py-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-xl font-semibold transition-colors"
+            className="mt-4 sm:mt-8 px-4 sm:px-8 py-3 sm:py-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-base sm:text-xl font-semibold transition-colors"
           >
             Dismiss Alert
           </button>
         </div>
 
-        {/* Right Side - Map */}
-        <div className="w-1/2 p-4 flex items-center justify-center">
-          <div className="w-full h-full max-w-4xl">
+        {/* Map - full width on mobile, side-by-side on large screens */}
+        <div className="w-full lg:w-1/2 p-2 sm:p-4 flex items-center justify-center min-h-[200px] lg:min-h-0 lg:h-auto">
+          <div className="w-full h-full min-h-[180px] lg:min-h-0 max-w-4xl">
             <MapComponent address={alert.address} callType={alert.call_type} />
           </div>
         </div>

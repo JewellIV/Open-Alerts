@@ -4,7 +4,8 @@ import {
   enableQuietMode, 
   disableQuietMode, 
   isQuietModeEnabled, 
-  RoomConfig
+  RoomConfig,
+  setUnitMapping
 } from '../utils/roomSpeakerController'
 import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin } from '../utils/adminAuth'
 
@@ -34,6 +35,40 @@ function RoomSpeakerAdmin() {
   const [availableUnits, setAvailableUnits] = useState<string[]>([])
   const [loadingUnits, setLoadingUnits] = useState(false)
 
+  const fetchAvailableUnits = async (baseUrl?: string) => {
+    const url = baseUrl ?? backendUrl
+    setLoadingUnits(true)
+    try {
+      const apiUrl = `${url}/api/station-units`
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((import.meta as any).env?.DEV) {
+        console.log('Fetching available units from:', apiUrl)
+      }
+      const response = await fetch(apiUrl)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((import.meta as any).env?.DEV) {
+        console.log('Response status:', response.status)
+      }
+      if (response.ok) {
+        const data = await response.json()
+        if (data.unit_mapping) {
+          setUnitMapping(data.unit_mapping)
+        }
+        const unitNames = (data.units || []).map((u: { unit_name: string }) => u.unit_name)
+        setAvailableUnits(unitNames)
+      } else {
+        const errorText = await response.text()
+        console.error('Failed to fetch units:', response.status, errorText)
+        setAvailableUnits([])
+      }
+    } catch (error) {
+      console.error('Error fetching units:', error)
+      setAvailableUnits([])
+    } finally {
+      setLoadingUnits(false)
+    }
+  }
+
   useEffect(() => {
     // Load existing config
     const savedRoomId = localStorage.getItem('roomId')
@@ -49,51 +84,7 @@ function RoomSpeakerAdmin() {
     }
     
     // Always fetch available units (public endpoint, no auth required)
-    // Use savedBackendUrl directly since state might not be updated yet
-    const fetchUnits = async () => {
-      setLoadingUnits(true)
-      try {
-        const url = `${savedBackendUrl}/api/station-units`
-        
-        // Only log in development mode to reduce console noise
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((import.meta as any).env?.DEV) {
-          console.log('Fetching available units from:', url)
-        }
-        
-        const response = await fetch(url)
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((import.meta as any).env?.DEV) {
-          console.log('Response status:', response.status)
-        }
-        
-        if (response.ok) {
-          const data = await response.json()
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if ((import.meta as any).env?.DEV) {
-            console.log('Units response data:', data)
-          }
-          const unitNames = (data.units || []).map((u: { unit_name: string }) => u.unit_name)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if ((import.meta as any).env?.DEV) {
-            console.log('Parsed unit names:', unitNames)
-          }
-          setAvailableUnits(unitNames)
-        } else {
-          const errorText = await response.text()
-          console.error('Failed to fetch units:', response.status, errorText)
-          setAvailableUnits([])
-        }
-      } catch (error) {
-        console.error('Error fetching units:', error)
-        setAvailableUnits([])
-      } finally {
-        setLoadingUnits(false)
-      }
-    }
-    
-    fetchUnits()
+    fetchAvailableUnits(savedBackendUrl)
     
     // Check if already logged in
     if (isAdminLoggedIn()) {
@@ -132,13 +123,12 @@ function RoomSpeakerAdmin() {
       } else if (response.status === 404) {
         // Room not in database yet, use localStorage as fallback
         const savedRoomUnits = localStorage.getItem('roomUnits')
-        const savedRoomName = localStorage.getItem('roomName') || currentRoomId
         const units = savedRoomUnits ? savedRoomUnits.split(',').filter(u => u.trim()) : []
         setSelectedUnits(units)
         
         const config: RoomConfig = {
           roomId: currentRoomId,
-          roomName: savedRoomName,
+          roomName: localStorage.getItem('roomName') || currentRoomId,
           units: units.length > 0 ? units : undefined
         }
         initializeRoomSpeaker(config, backendUrl)
@@ -149,7 +139,6 @@ function RoomSpeakerAdmin() {
       console.error('Error fetching room assignment:', error)
       // Fallback to localStorage
       const savedRoomUnits = localStorage.getItem('roomUnits')
-      const savedRoomName = localStorage.getItem('roomName') || currentRoomId
       const units = savedRoomUnits ? savedRoomUnits.split(',').filter(u => u.trim()) : []
       setSelectedUnits(units)
     }
@@ -255,7 +244,7 @@ function RoomSpeakerAdmin() {
       }
       
       if (response.ok) {
-        const data = await response.json()
+        await response.json() // Response handled, data not needed
         
         // Also save to localStorage as backup
         localStorage.setItem('roomId', roomId)
@@ -344,15 +333,6 @@ function RoomSpeakerAdmin() {
     }
   }
 
-  // Common unit names for quick selection
-  const commonUnits = [
-    'Engine 1', 'Engine 2', 'Engine 3', 'Engine 4',
-    'Ladder 1', 'Ladder 2', 'Ladder 3',
-    'Medic 1', 'Medic 2', 'Medic 3', 'Medic 4',
-    'Chief', 'Deputy Chief', 'Battalion Chief',
-    'Rescue 1', 'Rescue 2', 'Squad 1', 'Squad 2',
-    'Tanker 1', 'Tanker 2', 'Brush 1', 'Brush 2'
-  ]
 
   if (loading) {
     return (

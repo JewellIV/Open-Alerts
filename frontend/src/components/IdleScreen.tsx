@@ -3,7 +3,7 @@ import WeatherMap from './WeatherMap'
 import ScrollingNotices from './ScrollingNotices'
 import { initializeAudio } from '../utils/soundAlerts'
 import { initializeSpeech, isSpeechSupported } from '../utils/speechManager'
-import { isQuietModeEnabled, enableQuietMode, disableQuietMode, getRoomConfig, initializeRoomSpeaker } from '../utils/roomSpeakerController'
+import { isQuietModeEnabled, enableQuietMode, disableQuietMode, getRoomConfig, initializeRoomSpeaker, setUnitMapping } from '../utils/roomSpeakerController'
 
 interface IdleScreenProps {
   isConnected: boolean
@@ -22,7 +22,15 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
   const [availableUnits, setAvailableUnits] = useState<string[]>([])
   const [selectedUnits, setSelectedUnits] = useState<string[]>([])
   const [loadingUnits, setLoadingUnits] = useState(false)
+  const [, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight })
   const roomConfig = getRoomConfig()
+
+  // Force re-render on resize so viewport units (vw/vh) recalculate
+  useEffect(() => {
+    const onResize = () => setWindowSize({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const handleEnableAudio = async () => {
     try {
@@ -116,6 +124,9 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
       if (response.ok) {
         const data = await response.json()
         console.log('Units response:', data)
+        if (data.unit_mapping) {
+          setUnitMapping(data.unit_mapping)
+        }
         const unitNames = (data.units || []).map((u: { unit_name: string }) => u.unit_name)
         console.log('Parsed unit names:', unitNames)
         
@@ -274,14 +285,14 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-gray-900 text-white">
+    <div className="h-full w-full flex flex-col bg-gray-900 text-white min-h-0">
       {/* Scrolling Notices Bar at Top */}
       <ScrollingNotices />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex items-center justify-center relative">
+      {/* Main Content Area - fills remaining space, flex row so weather doesn't overlap clock */}
+      <div className="flex-1 flex flex-row items-center justify-center gap-2 sm:gap-4 min-h-0 p-4 sm:p-6 relative">
       {/* Connection Status - Always visible */}
-      <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
+      <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex flex-col items-end gap-1 sm:gap-2">
         
         {isReconnecting ? (
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-600 shadow-lg">
@@ -312,23 +323,23 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
           )}
         </div>
 
-        {/* Left Side - Weather Map */}
-        <div className="absolute left-8 top-1/2 transform -translate-y-1/2 w-80">
+        {/* Left Side - Weather Map - fluid width scales with viewport on resize */}
+        <div className="hidden sm:flex shrink-0 w-[clamp(80px,20vw,560px)] min-w-0 items-center">
           <WeatherMap location="Aylett, VA" />
         </div>
 
-        {/* Center - Digital Clock */}
-        <div className="text-center flex-1">
-          <div className="text-9xl font-mono font-bold mb-8 tracking-wider">
+        {/* Center - Digital Clock - responsive sizing, takes remaining space */}
+        <div className="text-center flex-1 min-w-0 px-2">
+          <div className="text-5xl sm:text-7xl lg:text-9xl font-mono font-bold mb-4 sm:mb-8 tracking-wider">
             {formatTime(time)}
           </div>
-          <div className="text-4xl font-light text-gray-400">
+          <div className="text-xl sm:text-3xl lg:text-4xl font-light text-gray-400">
             {formatDate(date)}
           </div>
         </div>
 
-        {/* Station Name with Controls on Either Side */}
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex items-center gap-6">
+        {/* Station Name with Controls - responsive layout */}
+        <div className="absolute bottom-4 sm:bottom-8 left-1/2 transform -translate-x-1/2 flex flex-wrap items-center justify-center gap-2 sm:gap-6 max-w-full px-2">
           {/* Select Units Button - Left Side */}
           {roomConfig && (
             <button
@@ -344,7 +355,7 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
           )}
 
           {/* Station Name */}
-          <div className="text-2xl text-gray-500">
+          <div className="text-base sm:text-xl lg:text-2xl text-gray-500">
             Mangohick Alerts Board
           </div>
 
@@ -375,7 +386,7 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
 
         {/* System Start Button (Phase 4) */}
         {(!audioEnabled || !speechEnabled) && (
-          <div className="absolute bottom-8 right-8">
+          <div className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8">
             <button
               onClick={handleEnableAudio}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors shadow-lg"
@@ -390,7 +401,7 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
           </div>
         )}
         {audioEnabled && speechEnabled && (
-          <div className="absolute bottom-8 right-8">
+          <div className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8">
             <div className="px-4 py-2 bg-green-600 rounded-lg text-sm font-medium">
               ✓ System Ready
             </div>

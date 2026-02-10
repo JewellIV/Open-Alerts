@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { Socket } from 'socket.io-client'
 import IdleScreen from './components/IdleScreen'
 import ActiveScreen from './components/ActiveScreen'
-import NoticesAdmin from './pages/NoticesAdmin'
-import RoomSpeakerAdmin from './pages/RoomSpeakerAdmin'
-import StationUnitsAdmin from './pages/StationUnitsAdmin'
 import { playFireAlert, playEMSAlert, getCallTypeCategory } from './utils/soundAlerts'
+const NoticesAdmin = lazy(() => import('./pages/NoticesAdmin'))
+const RoomSpeakerAdmin = lazy(() => import('./pages/RoomSpeakerAdmin'))
+const StationUnitsAdmin = lazy(() => import('./pages/StationUnitsAdmin'))
+const ReportsAdmin = lazy(() => import('./pages/ReportsAdmin'))
+const SendAlertAdmin = lazy(() => import('./pages/SendAlertAdmin'))
 import { announceAlert } from './utils/speechManager'
 import { getSocket } from './utils/socket'
 import { initializeLights, flashAlertLights, stopLights, areLightsAvailable } from './utils/lightController'
@@ -13,7 +15,7 @@ import { getLightDuration, getDisplayConfig } from './utils/displayConfig'
 import { initializeDisplayConfig, shouldDimDashboard, isNightModeEnabled, isNighttime } from './utils/displayConfig'
 import { dimDashboard, brightenDashboard } from './utils/brightnessControl'
 import { initializeAmplifier, muteAmplifier, unmuteAmplifier, cleanupAmplifier, isAmplifierAvailable, isAmplifierMuted } from './utils/amplifierController'
-import { initializeRoomSpeaker, handleRoomAlert, handleRoomAlertComplete, shouldPlayAlertInRoom, resetForDaytime } from './utils/roomSpeakerController'
+import { initializeRoomSpeaker, setUnitMapping, handleRoomAlert, handleRoomAlertComplete, shouldPlayAlertInRoom, resetForDaytime } from './utils/roomSpeakerController'
 
 interface Alert {
   id: number
@@ -21,7 +23,9 @@ interface Alert {
   call_type: string
   address: string
   units: string
+  display_units?: string | null
   narrative: string | null
+  recording_url?: string | null
 }
 
 function App() {
@@ -81,6 +85,11 @@ function App() {
         roomName,
         units
       }, backendUrl)
+      // Load unit mapping for CAD code resolution (ENG2 -> Engine 2)
+      fetch(`${backendUrl}/api/station-units`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => { if (data?.unit_mapping) setUnitMapping(data.unit_mapping) })
+        .catch(() => {})
     }
     
     // Set up night mode dimming for room displays
@@ -150,6 +159,23 @@ function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1) || 'dashboard'
+      // Map hash to page names
+      const pageMap: Record<string, string> = {
+        'admin': 'admin',
+        'notices-admin': 'admin',
+        'send-alert': 'send-alert',
+        'room-speaker-admin': 'room-speaker',
+        'room-speaker': 'room-speaker',
+        'station-units-admin': 'station-units',
+        'station-units': 'station-units',
+        'reports-admin': 'reports',
+        'reports': 'reports',
+        'dashboard': 'dashboard',
+        'room': 'dashboard',
+        'station': 'dashboard'
+      }
+      const page = pageMap[hash] || 'dashboard'
+      setCurrentPage(page)
       setCurrentPage(hash)
     }
     
@@ -435,15 +461,21 @@ function App() {
     }
   }, []) // Empty dependency array - only run once on mount
 
-  // Show admin pages based on hash
+  // Show admin pages based on hash (lazy loaded)
   if (currentPage === 'admin') {
-    return <NoticesAdmin />
+    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><NoticesAdmin /></Suspense>
+  }
+  if (currentPage === 'send-alert') {
+    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><SendAlertAdmin /></Suspense>
   }
   if (currentPage === 'room-speaker') {
-    return <RoomSpeakerAdmin />
+    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><RoomSpeakerAdmin /></Suspense>
   }
   if (currentPage === 'station-units') {
-    return <StationUnitsAdmin />
+    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><StationUnitsAdmin /></Suspense>
+  }
+  if (currentPage === 'reports') {
+    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><ReportsAdmin /></Suspense>
   }
 
   // Always show something, even if there's an error
@@ -466,15 +498,22 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-gray-900">
+    <div className="h-screen min-h-dvh w-full min-w-0 overflow-hidden flex flex-col bg-gray-900">
       {/* Admin links - hidden but accessible */}
-      <div className="absolute bottom-2 left-2 flex gap-2 z-50">
+      <div className="absolute bottom-2 left-2 flex flex-wrap gap-1 sm:gap-2 z-50 max-w-full">
         <a 
           href="#admin" 
           className="text-xs text-gray-600 hover:text-gray-400"
           title="Notices Admin"
         >
           Admin
+        </a>
+        <a 
+          href="#send-alert" 
+          className="text-xs text-gray-600 hover:text-gray-400"
+          title="Send Alert"
+        >
+          Send Alert
         </a>
         <a 
           href="#room-speaker" 
@@ -490,7 +529,15 @@ function App() {
         >
           Units
         </a>
+        <a 
+          href="#reports" 
+          className="text-xs text-gray-600 hover:text-gray-400"
+          title="Reports & Analytics"
+        >
+          Reports
+        </a>
       </div>
+      <div className="flex-1 min-h-0 relative">
       {currentAlert ? (
         <ActiveScreen 
           alert={currentAlert} 
@@ -535,6 +582,7 @@ function App() {
           isDimmed={isDimmed}
         />
       )}
+      </div>
     </div>
   )
 }

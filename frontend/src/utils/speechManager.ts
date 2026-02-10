@@ -72,31 +72,41 @@ export function speak(
     // Try to use a more natural voice if available
     if (options.voice) {
       utterance.voice = options.voice
+      utterance.lang = options.voice.lang
     } else {
-      // Prefer a male voice for station announcements (if available)
+      // Get language from localStorage or browser default
+      const lang = localStorage.getItem('i18nextLng') || navigator.language.split('-')[0] || 'en'
       const voices = synth.getVoices()
       
-      // Try to find a good English voice
+      // Try to find a voice for the selected language
       let preferredVoice = voices.find(voice => 
-        voice.name.toLowerCase().includes('male') || 
-        voice.name.toLowerCase().includes('david') ||
-        voice.name.toLowerCase().includes('mark') ||
-        voice.name.toLowerCase().includes('zira') // Windows default female
-      )
+        voice.lang.startsWith(lang) && voice.localService
+      ) || voices.find(voice => voice.lang.startsWith(lang))
       
-      // Fallback to any English voice
+      // For English, prefer a male voice for station announcements
+      if (lang === 'en' && !preferredVoice) {
+        preferredVoice = voices.find(voice => 
+          (voice.name.toLowerCase().includes('male') || 
+           voice.name.toLowerCase().includes('david') ||
+           voice.name.toLowerCase().includes('mark')) &&
+          voice.lang.startsWith('en')
+        )
+      }
+      
+      // Fallback to any voice in the language
       if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
-          voice.lang.startsWith('en') && voice.localService
-        ) || voices.find(voice => voice.lang.startsWith('en'))
+          voice.lang.startsWith(lang) && voice.localService
+        ) || voices.find(voice => voice.lang.startsWith(lang))
       }
       
       if (preferredVoice) {
         utterance.voice = preferredVoice
         utterance.lang = preferredVoice.lang
       } else {
-        // Default to US English
-        utterance.lang = 'en-US'
+        // Default based on detected language
+        const detectedLang = localStorage.getItem('i18nextLng') || navigator.language.split('-')[0] || 'en'
+        utterance.lang = detectedLang === 'es' ? 'es-ES' : 'en-US'
       }
     }
 
@@ -118,15 +128,29 @@ export function speak(
  * Format: "Attention Station. [Call Type]. [Address]. [Units]."
  * 
  * @param alert - The alert object containing call details
+ * @param language - Language code (e.g., 'en', 'es'). Defaults to browser language or 'en'
  */
-export async function announceAlert(alert: {
-  call_type: string
-  address: string
-  units: string
-  narrative?: string | null
-}): Promise<void> {
-  // Construct the announcement text
-  let text = `Attention Station. ${alert.call_type}. ${alert.address}. Units ${alert.units}.`
+export async function announceAlert(
+  alert: {
+    call_type: string
+    address: string
+    units: string
+    display_units?: string | null
+    narrative?: string | null
+  },
+  language?: string
+): Promise<void> {
+  // Get language from parameter, localStorage, or browser default
+  const lang = language || localStorage.getItem('i18nextLng') || navigator.language.split('-')[0] || 'en'
+  const unitsForSpeech = alert.display_units || alert.units
+
+  // Construct the announcement text based on language
+  let text = ''
+  if (lang === 'es') {
+    text = `Atención Estación. ${alert.call_type}. ${alert.address}. Unidades ${unitsForSpeech}.`
+  } else {
+    text = `Attention Station. ${alert.call_type}. ${alert.address}. Units ${unitsForSpeech}.`
+  }
   
   // Add narrative if available (truncate if too long)
   if (alert.narrative) {
@@ -138,7 +162,17 @@ export async function announceAlert(alert: {
   }
 
   try {
-    await speak(text)
+    // Get voice for the specified language
+    const voices = getAvailableVoices()
+    const langVoice = voices.find(voice => 
+      voice.lang.startsWith(lang) && voice.localService
+    ) || voices.find(voice => voice.lang.startsWith(lang))
+    
+    // Use speak with language-specific voice
+    // The speak() function will automatically detect language from localStorage or browser
+    await speak(text, {
+      voice: langVoice || null
+    })
   } catch (error) {
     console.error('Failed to announce alert:', error)
     throw error

@@ -23,6 +23,14 @@ function WeatherMap({ location = "Aylett, VA" }: WeatherMapProps) {
   const [radarUrl, setRadarUrl] = useState<string | null>(null)
   const [radarError, setRadarError] = useState<string | null>(null)
   const [useRadarIframe, setUseRadarIframe] = useState(true) // Default to iframe (more reliable)
+  const [, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight })
+
+  // Re-render on resize so viewport units (vw/vh) recalculate fluidly
+  useEffect(() => {
+    const onResize = () => setWindowSize({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // Default coordinates for Mangohick Volunteer Fire Department
   // Address: 3493 King William Rd, Aylett, VA 23009
@@ -296,8 +304,8 @@ function WeatherMap({ location = "Aylett, VA" }: WeatherMapProps) {
 
   if (loading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-        <div className="text-gray-400">Loading weather...</div>
+      <div className="bg-gray-800 rounded-lg p-2 sm:p-4 border border-gray-700">
+        <div className="text-gray-400 text-xs sm:text-sm">Loading weather...</div>
       </div>
     )
   }
@@ -318,50 +326,38 @@ function WeatherMap({ location = "Aylett, VA" }: WeatherMapProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Weather Widget */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold text-white">Weather</h3>
-          <span className="text-3xl">{getWeatherIcon(weather.condition)}</span>
+    <div className="space-y-0.5 sm:space-y-1 lg:space-y-4 w-full max-w-full flex flex-col">
+      {/* Weather Widget - square box */}
+      <div className="bg-gray-800 rounded-lg p-1 sm:p-2 lg:p-6 border border-gray-700 shrink-0 aspect-square w-full">
+        <div className="flex items-center justify-between gap-1 mb-0 sm:mb-1 lg:mb-2">
+          <h3 className="text-[9px] sm:text-sm lg:text-xl font-semibold text-white truncate">Weather</h3>
+          <span className="text-xs sm:text-xl lg:text-3xl shrink-0">{getWeatherIcon(weather.condition)}</span>
         </div>
         
-        <div className="space-y-2">
-          <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-bold text-white">{weather.temp}°</span>
-            <span className="text-xl text-gray-400">F</span>
-          </div>
-          
-          <div className="text-lg text-gray-300">{weather.condition}</div>
-          <div className="text-sm text-gray-400">{weather.location}</div>
-          
-          <div className="flex gap-4 mt-4 pt-4 border-t border-gray-700">
-            <div>
-              <div className="text-xs text-gray-500">Humidity</div>
-              <div className="text-sm font-medium text-white">{weather.humidity}%</div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500">Wind</div>
-              <div className="text-sm font-medium text-white">{weather.windSpeed} mph</div>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-baseline gap-x-1.5 sm:gap-x-2 gap-y-0 sm:gap-y-1">
+          <span className="text-sm sm:text-2xl lg:text-4xl font-bold text-white">{weather.temp}°F</span>
+          <span className="text-[9px] sm:text-sm lg:text-lg text-gray-300">{weather.condition}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 sm:mt-1 lg:mt-2 pt-0.5 sm:pt-1 lg:pt-2 border-t border-gray-700">
+          <span className="text-[8px] sm:text-xs text-gray-400 truncate">{weather.location}</span>
+          <span className="text-[8px] sm:text-xs text-gray-500 shrink-0">H:{weather.humidity}% W:{weather.windSpeed}</span>
         </div>
         
         {error && (
-          <div className="mt-2 text-xs text-yellow-500">{error}</div>
+          <div className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-yellow-500">{error}</div>
         )}
       </div>
 
-      {/* Radar View */}
-      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-        <h3 className="text-lg font-semibold text-white mb-3">Radar</h3>
+      {/* Radar View - square box */}
+      <div className="bg-gray-800 rounded-lg p-1 sm:p-2 lg:p-4 border border-gray-700 shrink-0 aspect-square w-full flex flex-col">
+        <h3 className="text-[9px] sm:text-sm lg:text-lg font-semibold text-white mb-0 sm:mb-1 lg:mb-2 shrink-0">Radar</h3>
         {radarError ? (
-          <div className="w-full h-64 bg-gray-900 rounded flex flex-col items-center justify-center p-4">
-            <div className="text-yellow-500 text-sm text-center mb-2">⚠️</div>
-            <div className="text-gray-400 text-xs text-center">{radarError}</div>
+          <div className="w-full flex-1 min-h-0 bg-gray-900 rounded flex flex-col items-center justify-center p-1 sm:p-2">
+            <div className="text-yellow-500 text-[10px] sm:text-xs text-center">⚠️</div>
+            <div className="text-gray-400 text-[8px] sm:text-xs text-center truncate">{radarError}</div>
           </div>
         ) : radarUrl ? (
-          <div className="relative w-full h-64 bg-gray-900 rounded overflow-hidden">
+          <div className="relative w-full flex-1 min-h-0 bg-gray-900 rounded overflow-hidden">
             {useRadarIframe ? (
               <iframe 
                 src={`https://www.rainviewer.com/map.html?loc=${(weather?.lat || defaultLat).toFixed(4)},${(weather?.lon || defaultLon).toFixed(4)},7&oCS=1&c=1&o=83&lm=1&layer=radar&sm=1&sn=1&ts=2`}
@@ -395,12 +391,12 @@ function WeatherMap({ location = "Aylett, VA" }: WeatherMapProps) {
                 }}
               />
             )}
-            <div className="absolute bottom-2 right-2 bg-black bg-opacity-70 px-2 py-1 rounded text-xs text-white">
+            <div className="absolute bottom-0.5 right-0.5 sm:bottom-1 sm:right-1 bg-black bg-opacity-70 px-1 py-0.5 rounded text-[8px] sm:text-xs text-white">
               Live
             </div>
           </div>
         ) : (
-          <div className="w-full h-64 bg-gray-900 rounded flex items-center justify-center">
+          <div className="w-full flex-1 min-h-0 bg-gray-900 rounded flex items-center justify-center">
             <div className="text-gray-500 text-sm">Loading radar...</div>
           </div>
         )}
