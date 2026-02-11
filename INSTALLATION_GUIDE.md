@@ -186,12 +186,12 @@ sudo reboot
 #### Step 2.3: Install Required Software
 
 ```bash
-# Install Node.js (LTS version)
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+# Install Node.js 22 (required for backend; avoids better-sqlite3 issues with older/newer Node)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
 # Verify installation
-node --version  # Should show v20.x or higher
+node --version  # Should show v22.x
 npm --version   # Should show 10.x or higher
 
 # Install PM2 (process manager)
@@ -512,30 +512,153 @@ sudo ufw enable
 
 #### Step 6.2: Set Up Kiosk Mode
 
-1. **Install Chromium:**
+1. **Set Pi to boot to Desktop with Autologin (required for autostart):**
+   ```bash
+   sudo raspi-config
+   ```
+   - Go to **System Options** → **Boot / Auto Login**
+   - Select **Desktop Autologin** (and choose the same user you use for the display, e.g. `mvfdadmin`)
+   - Finish and exit. Reboot once after this step to confirm the desktop starts automatically.
+
+2. **Install Chromium:**
    ```bash
    sudo apt install -y chromium-browser
    ```
 
-2. **Create Autostart Script:**
+3. **Create the autostart file (for the user that autologs in):**
    ```bash
    mkdir -p ~/.config/autostart
    nano ~/.config/autostart/kiosk.desktop
    ```
    
-   Add:
+   Paste this (replace the URL with your backend IP if different, or use `http://localhost:3000` if this Pi runs the backend). Use **Terminal=false** so no black terminal window with blinking cursor appears:
    ```ini
    [Desktop Entry]
    Type=Application
    Name=MVFD Phoenix Kiosk
-   Exec=chromium-browser --kiosk --autoplay-policy=no-user-gesture-required --disable-infobars http://192.168.1.100:3000
+   Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito --password-store=basic --autoplay-policy=no-user-gesture-required http://192.168.1.100:3000
+   X-GNOME-Autostart-enabled=true
+   Terminal=false
    ```
+   - `--password-store=basic` avoids the "password for new keyring" popup.
+   - Use `http://localhost:3000` if this display Pi is also the backend Pi; otherwise use `http://<BACKEND_IP>:3000`.
 
-3. **Disable Screen Saver:**
+4. **Optional – Boot splash image:** Show the Open-Alerts logo at boot and keep it on screen until the backend is up and Chromium has loaded, so the desktop is never visible.
+   - Copy your bootsplash image to the Pi as `~/Open-Alerts/bootsplash.png`. On the Pi, install required packages (mpv for splash, curl to wait for backend):
+     ```bash
+     sudo apt install -y mpv curl
+     ```
+   - Create a startup script that waits for the display, shows the image first, then waits for the backend, then starts Chromium and keeps the image until it has loaded:
+     ```bash
+     nano ~/openalerts-kiosk.sh
+     ```
+     Contents (set `BACKEND_URL` to your backend; set `SPLASH_LOAD_SECONDS` to how long to keep the image after Chromium starts, e.g. 15):
+     ```bash
+     #!/bin/bash
+     export DISPLAY=:0
+     BACKEND_URL="http://192.168.68.92:3000"
+     IMAGE="$HOME/Open-Alerts/bootsplash.png"
+     SPLASH_LOAD_SECONDS=15
+
+     # Wait for X display to be ready (so splash can open before desktop is visible)
+     # Option A: if you have xdpyinfo (sudo apt install -y x11-utils):
+     #   for i in $(seq 1 30); do xdpyinfo -display :0 &>/dev/null && break; sleep 1; done; sleep 1
+     # Option B: simple delay (use this if xdpyinfo is not installed; increase 6 if desktop still shows first):
+     sleep 6
+
+     # Show splash first thing: fullscreen, on top, stays until we kill it
+     if [ -f "$IMAGE" ]; then
+       mpv --fullscreen --no-input --no-osd-bar --no-terminal --ontop --image-display-duration=99999 "$IMAGE" &
+       MPV_PID=$!
+       sleep 2
+     else
+       MPV_PID=""
+     fi
+
+     # Wait until backend returns HTTP 200 on /health (do not start Chromium before this)
+     while true; do
+       CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$BACKEND_URL/health" 2>/dev/null || echo "000")
+       [ "$CODE" = "200" ] && break
+       sleep 20
+     done
+
+     # Start Chromium behind the splash so it loads while image is still showing
+     chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito --password-store=basic --autoplay-policy=no-user-gesture-required "$BACKEND_URL" &
+
+     # Keep splash on screen until Chromium has had time to load, then reveal kiosk
+     sleep "$SPLASH_LOAD_SECONDS"
+     [ -n "$MPV_PID" ] && kill $MPV_PID 2>/dev/null
+     wait
+     ```
+   - If `xdpyinfo` is not installed (script fails or desktop still shows first), install it and retry, or replace the "Wait for X display" loop with a simple `sleep 5`:
+     ```bash
+     sudo apt install -y x11-utils
+     ```
+   - Then:
+     ```bash
+     chmod +x ~/openalerts-kiosk.sh
+     ```
+   - In `~/.config/autostart/kiosk.desktop`, use this (no terminal window – **Terminal=false** prevents the black screen with blinking cursor):
+     ```ini
+     [Desktop Entry]
+     Type=Application
+     Name=MVFD Phoenix Kiosk
+     Exec=/home/mvfdadmin/openalerts-kiosk.sh
+     X-GNOME-Autostart-enabled=true
+     Terminal=false
+     ```
+     (Use your actual username for `Exec=`.) **Important:** `Terminal=false` ensures the script runs without opening a terminal; if it is `true` or missing, you get a black window with a blinking `_` while the script runs, then the desktop.
+   - On boot: script runs in background (no black terminal) → splash image appears and stays on top → script waits until backend returns 200 on `/health` → Chromium starts behind splash → after `SPLASH_LOAD_SECONDS` splash closes and kiosk is shown. If you still see a black screen with blinking cursor before the desktop, it may be the **boot console** (before the GUI); use Plymouth (see below) or add `quiet splash` to the kernel command line in `/boot/firmware/cmdline.txt` (or `/boot/cmdline.txt`).
+
+   **Optional – Early boot splash (Plymouth):** To show your Open-Alerts logo during the OS boot phase (after the first 1–2 seconds, before the desktop), replace the Plymouth splash image with your logo.
+   - Copy your logo to the Pi (e.g. `bootsplash.png` or `Logo.png` to `~/Open-Alerts/`).
+   - On the Pi, install Plymouth if needed and back up the default splash, then replace it with your image:
+     ```bash
+     sudo apt install -y plymouth plymouth-themes
+     # Use the default "pix" theme; replace its splash image with your logo
+     sudo cp /usr/share/plymouth/themes/pix/splash.png /usr/share/plymouth/themes/pix/splash.png.bak
+     sudo cp ~/Open-Alerts/bootsplash.png /usr/share/plymouth/themes/pix/splash.png
+     ```
+   - Your image should match the display resolution (e.g. 1920×1080). If it has transparency, use a PNG; Plymouth may show a solid background behind it depending on the theme.
+   - Rebuild the initramfs so the new image is used at boot:
+     ```bash
+     sudo update-initramfs -u
+     ```
+   - (Optional) Hide boot text and show only the splash: edit the kernel command line:
+     ```bash
+     sudo nano /boot/firmware/cmdline.txt
+     ```
+     Add `quiet splash` to the single line (and optionally `logo.nologo` to hide the small Pi logo). On some installs the file is `/boot/cmdline.txt`. Save and reboot.
+   - **Note:** The very first 1–2 seconds of boot (GPU/firmware) are usually not customizable and may show a brief rainbow or black screen; your logo will appear once Plymouth starts.
+
+5. **Optional – delay until backend is ready (if not using splash script):** If the browser sometimes loads before the backend and you are **not** using the splash script above, use a delay script:
    ```bash
-   sudo apt install -y xscreensaver
-   # Disable screensaver in desktop settings
+   nano ~/openalerts-kiosk.sh
    ```
+   Contents:
+   ```bash
+   #!/bin/bash
+   export DISPLAY=:0
+   sleep 20
+   chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito --password-store=basic --autoplay-policy=no-user-gesture-required http://192.168.1.100:3000
+   ```
+   Then:
+   ```bash
+   chmod +x ~/openalerts-kiosk.sh
+   ```
+   And in `~/.config/autostart/kiosk.desktop` set:
+   ```ini
+   Exec=/home/mvfdadmin/openalerts-kiosk.sh
+   ```
+   (Use your actual username and path if different.)
+
+6. **Disable screen saver** (in desktop: Menu → Preferences → Screen Saver, or set to Blank only / Disable).
+
+7. **Reboot and verify:**
+   ```bash
+   sudo reboot
+   ```
+   After reboot, the desktop should start, then Chromium should open in kiosk mode without keyring or error dialogs.
 
 **Checkpoint:** Display automatically opens browser in kiosk mode on boot.
 
@@ -780,6 +903,25 @@ curl -X POST http://192.168.1.100:3000/api/alert \
 ## Troubleshooting
 
 ### Common Issues
+
+#### Black screen with blinking cursor, then desktop (Chromium still loading)
+
+**Cause:** The kiosk is started with a **terminal window** visible (e.g. `Terminal=true` in the .desktop file or the file only had `Exec=` and no `Terminal=false`).
+
+**Fix:** Edit the autostart file and set **Terminal=false** so the script runs in the background with no terminal window:
+```bash
+nano ~/.config/autostart/kiosk.desktop
+```
+Ensure it contains:
+```ini
+[Desktop Entry]
+Type=Application
+Name=MVFD Phoenix Kiosk
+Exec=/home/YOUR_USERNAME/openalerts-kiosk.sh
+X-GNOME-Autostart-enabled=true
+Terminal=false
+```
+Save, then reboot. If you still see a black screen with cursor **before** the desktop (during early boot), that is the Linux console; add `quiet splash` to the kernel command line or use Plymouth (see “Optional – Early boot splash” in the guide).
 
 #### "pm2: command not found"
 

@@ -328,6 +328,33 @@ const validateApiKey = (req: Request, res: Response, next: Function) => {
   next();
 };
 
+// Accept either admin session (X-Admin-Token) or API key (x-api-key) - for admin UI and scripts
+const validateAdminOrApiKey = (req: Request, res: Response, next: Function) => {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const sessionToken = req.headers['x-admin-token'] as string;
+  const session = sessionToken ? adminSessions.get(sessionToken) : null;
+  const hasValidAdmin = adminPassword && session && session.expiresAt >= Date.now();
+  if (hasValidAdmin) {
+    const newExpiresAt = Date.now() + (24 * 60 * 60 * 1000);
+    session!.expiresAt = newExpiresAt;
+    try {
+      db.prepare('UPDATE admin_sessions SET expires_at = ? WHERE token = ?').run(newExpiresAt, sessionToken);
+    } catch (e) { /* ignore */ }
+    return next();
+  }
+  const apiKey = process.env.API_KEY;
+  if (apiKey) {
+    const providedKey = req.query.api_key || req.headers['x-api-key'];
+    if (providedKey === apiKey) return next();
+  } else {
+    return next(); // no API_KEY set, allow
+  }
+  return res.status(401).json({
+    error: 'Unauthorized',
+    message: 'Admin login required or valid API key'
+  });
+};
+
 
 // Helper function to determine alert category (fire vs EMS)
 function getCallTypeCategory(callType: string): 'fire' | 'ems' {
@@ -2212,7 +2239,7 @@ app.get('/api/station-units', (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/station-units', validateApiKey, (req: Request, res: Response) => {
+app.post('/api/station-units', validateAdminOrApiKey, (req: Request, res: Response) => {
   try {
     const { unit_name, unit_type, description, cad_code } = req.body;
     
@@ -2292,7 +2319,7 @@ app.put('/api/station-units/:id', validateAdminSession, (req: Request, res: Resp
   }
 });
 
-app.delete('/api/station-units/:id', validateApiKey, (req: Request, res: Response) => {
+app.delete('/api/station-units/:id', validateAdminOrApiKey, (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
