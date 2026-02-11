@@ -45,8 +45,11 @@ function App() {
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const env = (import.meta as any).env as Record<string, string | undefined>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || localStorage.getItem('backendUrl') || 'http://localhost:3000'
+    // Use env, then localStorage, then current page origin (so one build works from Pi or PC by IP)
+    const backendUrl =
+      (import.meta as any).env?.VITE_BACKEND_URL ||
+      (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
+      'http://localhost:3000'
     
     // Initialize amplifier controller if configured
     const amplifierType = env.VITE_AMPLIFIER_TYPE || localStorage.getItem('amplifierType')

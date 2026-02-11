@@ -145,7 +145,7 @@ function ActiveScreen({ alert, onDismiss }: ActiveScreenProps) {
               <audio
                 controls
                 className="w-full h-10 sm:h-12"
-                src={`${(import.meta as any).env?.VITE_BACKEND_URL || localStorage.getItem('backendUrl') || 'http://localhost:3000'}${alert.recording_url}`}
+                src={`${(import.meta as any).env?.VITE_BACKEND_URL || (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) || 'http://localhost:3000'}${alert.recording_url}`}
               >
                 Your browser does not support the audio element.
               </audio>

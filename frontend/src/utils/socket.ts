@@ -5,11 +5,14 @@ let socketInstance: Socket | null = null
 
 export function getSocket(): Socket {
   if (!socketInstance) {
-    // Get backend URL from environment variable or default to localhost
+    // Use env, then localStorage, then current page origin (so one build works from Pi or PC by IP)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const env = (import.meta as any).env as Record<string, string | undefined>
-    const backendUrl = env.VITE_BACKEND_URL || 'http://localhost:3000'
-    
+    const backendUrl =
+      env.VITE_BACKEND_URL ||
+      (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
+      'http://localhost:3000'
+
     console.log(`🔌 Connecting to backend at: ${backendUrl}`)
     
     socketInstance = io(backendUrl, {
