@@ -491,6 +491,8 @@ sudo ufw enable
    
    **For Main Station Display:**
    ```env
+   VITE_OPENWEATHER_API_KEY=2efd4dcf3bc937b247970302bec1e9e7
+   API_KEY=5c6b9987376f3823c5c171e4deefccce22c94ae3271a9c494ec3cee43f945400
    VITE_BACKEND_URL=http://192.168.1.100:3000
    VITE_DISPLAY_TYPE=main-station
    VITE_NIGHT_MODE_ENABLED=false
@@ -498,6 +500,8 @@ sudo ufw enable
 
    **For Room Displays:**
    ```env
+   VITE_OPENWEATHER_API_KEY=2efd4dcf3bc937b247970302bec1e9e7
+   API_KEY=5c6b9987376f3823c5c171e4deefccce22c94ae3271a9c494ec3cee43f945400
    VITE_BACKEND_URL=http://192.168.1.100:3000
    VITE_DISPLAY_TYPE=room
    VITE_NIGHT_MODE_ENABLED=true
