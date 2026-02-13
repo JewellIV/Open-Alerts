@@ -1,7 +1,1 @@
-{
-  "stations": [
-    { "id": "mvfd", "name": "Mangohick VFD", "lat": 37.8015866, "lon": -77.2585322 }
-  ],
-  "dryHydrants": [],
-  "countyHydrants": []
-}
+{"stations":[{"id":"mvfd","name":"Mangohick Station 2","lat":37.8015866,"lon":-77.2585322},{"id":"kwfems","name":"KWFEMS Station 1","lat":37.7801236,"lon":-77.21063024}],"dryHydrants":[],"countyHydrants":[],"privateHydrants":[]}

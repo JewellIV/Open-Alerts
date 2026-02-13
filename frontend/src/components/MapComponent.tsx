@@ -23,29 +23,21 @@ const defaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = defaultIcon
 
-function createCircleIcon(color: string, size = 12) {
-  return L.divIcon({
-    className: 'map-layer-icon',
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  })
-}
-
-// Red Maltese cross with "F" in center (fire department symbol). 8-point star shape.
+// Traditional fire department Maltese cross (8-pointed, with "F" in center)
+// Classic shape: 4 arms (N,S,E,W) each split at tip; notches at diagonals
 const MALTESE_CROSS_SVG = (size: number) => {
-  const s = size
-  const c = s / 2
+  const c = size / 2
   const R = c - 1
-  const r = R * 0.4
+  const r = R * 0.32
   const pts: string[] = []
   for (let i = 0; i < 8; i++) {
     const angle = (i * Math.PI) / 4 - Math.PI / 2
     const rad = i % 2 === 0 ? R : r
-    pts.push(`${c + rad * Math.cos(angle)},${c + rad * Math.sin(angle)}`)
+    pts.push(`${(c + rad * Math.cos(angle)).toFixed(2)},${(c + rad * Math.sin(angle)).toFixed(2)}`)
   }
   const points = pts.join(' ')
-  return `<div style="width:${s}px;height:${s}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))"><svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg"><polygon points="${points}" fill="#b91c1c" stroke="#7f1d1d" stroke-width="0.8"/><text x="${c}" y="${c + 4}" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-weight="bold" font-size="11">F</text></svg></div>`
+  const fontSize = Math.max(8, size * 0.36)
+  return `<div style="width:${size}px;height:${size}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg"><polygon points="${points}" fill="#b91c1c" stroke="#7f1d1d" stroke-width="1"/><text x="${c}" y="${c + fontSize * 0.38}" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-weight="bold" font-size="${fontSize}">F</text></svg></div>`
 }
 
 function createMalteseCrossIcon(size = 32) {
@@ -57,9 +49,32 @@ function createMalteseCrossIcon(size = 32) {
   })
 }
 
+// Fire hydrant icon (color by type: red=dry, blue=county, orange=private)
+const FIRE_HYDRANT_SVG = (size: number, color: string) => {
+  const stroke = '#1c1917'
+  return `<div style="width:${size}px;height:${size}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))"><svg width="${size}" height="${size}" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 30 L10 30 L10 26 L14 26 L14 30 Z M12 26 L12 22 M8 22 L16 22 L16 18 L8 18 Z" fill="${color}" stroke="${stroke}" stroke-width="0.8"/>
+    <circle cx="12" cy="14" r="4" fill="${color}" stroke="${stroke}" stroke-width="0.8"/>
+    <circle cx="12" cy="6" r="2.5" fill="${color}" stroke="${stroke}" stroke-width="0.6"/>
+    <circle cx="12" cy="2" r="1" fill="${color}" stroke="${stroke}" stroke-width="0.4"/>
+    <rect x="5" y="12" width="3" height="4" rx="1" fill="${color}" stroke="${stroke}" stroke-width="0.5"/>
+    <rect x="16" y="12" width="3" height="4" rx="1" fill="${color}" stroke="${stroke}" stroke-width="0.5"/>
+  </svg></div>`
+}
+
+function createHydrantIcon(color: string, size = 24) {
+  return L.divIcon({
+    className: 'map-layer-icon',
+    html: FIRE_HYDRANT_SVG(size, color),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size],
+  })
+}
+
 const stationIcon = createMalteseCrossIcon(32)
-const dryHydrantIcon = createCircleIcon('#dc2626')
-const countyHydrantIcon = createCircleIcon('#2563eb')
+const dryHydrantIcon = createHydrantIcon('#dc2626', 24)
+const countyHydrantIcon = createHydrantIcon('#2563eb', 24)
+const privateHydrantIcon = createHydrantIcon('#f97316', 24)
 
 // Component to update map center when coordinates change
 function MapUpdater({ center }: { center: [number, number] }) {
@@ -238,6 +253,13 @@ function MapComponent({ address, callType, latitude, longitude }: MapComponentPr
           <Marker key={`county-${p.id}`} position={[p.lat, p.lon]} icon={countyHydrantIcon}>
             <Popup>
               <div className="text-sm">County Hydrant{p.name ? `: ${p.name}` : ''}</div>
+            </Popup>
+          </Marker>
+        ))}
+        {(layerData?.privateHydrants || []).map((p) => (
+          <Marker key={`private-${p.id}`} position={[p.lat, p.lon]} icon={privateHydrantIcon}>
+            <Popup>
+              <div className="text-sm">Private Hydrant{p.name ? `: ${p.name}` : ''}</div>
             </Popup>
           </Marker>
         ))}

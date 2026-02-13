@@ -14,9 +14,10 @@ export interface HydrantsStationsData {
   stations: MapPoint[]
   dryHydrants: MapPoint[]
   countyHydrants: MapPoint[]
+  privateHydrants?: MapPoint[]
 }
 
-export type MapPointType = 'station' | 'dryHydrant' | 'countyHydrant'
+export type MapPointType = 'station' | 'dryHydrant' | 'countyHydrant' | 'privateHydrant'
 
 export interface MapPointWithType extends MapPoint {
   type: MapPointType
@@ -56,8 +57,9 @@ export function getClosestTwo(
 ): Array<{ point: MapPointWithType; miles: number }> {
   if (!data) return []
   const hydrantsOnly: MapPointWithType[] = [
-    ...data.dryHydrants.map((p) => ({ ...p, type: 'dryHydrant' as MapPointType })),
-    ...data.countyHydrants.map((p) => ({ ...p, type: 'countyHydrant' as MapPointType })),
+    ...(data.dryHydrants || []).map((p) => ({ ...p, type: 'dryHydrant' as MapPointType })),
+    ...(data.countyHydrants || []).map((p) => ({ ...p, type: 'countyHydrant' as MapPointType })),
+    ...(data.privateHydrants || []).map((p) => ({ ...p, type: 'privateHydrant' as MapPointType })),
   ]
   const withDist = hydrantsOnly.map((point) => ({
     point,
@@ -75,6 +77,8 @@ export function typeLabel(type: MapPointType): string {
       return 'Dry Hydrant'
     case 'countyHydrant':
       return 'County Hydrant'
+    case 'privateHydrant':
+      return 'Private Hydrant'
     default:
       return 'Location'
   }

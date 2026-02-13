@@ -2,9 +2,10 @@
 
 Edit `hydrants-stations.json` to show stations and hydrants on the alert map and the **closest 2** to the incident.
 
-- **stations** – Fire stations (gray circle on map)
-- **dryHydrants** – Dry hydrants (red circle)
-- **countyHydrants** – County hydrants (blue circle)
+- **stations** – Fire stations (Maltese cross on map)
+- **dryHydrants** – Dry hydrants (red fire hydrant icon)
+- **countyHydrants** – County hydrants (blue fire hydrant icon)
+- **privateHydrants** – Private hydrants (orange hydrant icon)
 
 Each item: `id` (required), `name` (optional label), `lat`, `lon` (decimal degrees).
 
@@ -20,6 +21,9 @@ Example:
   ],
   "countyHydrants": [
     { "id": "ch1", "name": "Rt 360", "lat": 37.77, "lon": -77.13 }
+  ],
+  "privateHydrants": [
+    { "id": "ph1", "name": "Meadow Ln", "lat": 37.76, "lon": -77.12 }
   ]
 }
 ```
