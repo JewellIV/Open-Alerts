@@ -45,9 +45,9 @@ function NoticesAdmin() {
     setBackendUrl(savedBackendUrl)
     initializeAdminAuth(savedBackendUrl)
     
-    // Check if already logged in
+    // Check if already logged in (pass savedBackendUrl - state hasn't updated yet on first run)
     if (isAdminLoggedIn()) {
-      fetchNotices()
+      fetchNotices(savedBackendUrl)
     } else {
       setShowPasswordInput(true)
       setLoading(false)
@@ -63,15 +63,15 @@ function NoticesAdmin() {
     }
   }, [editingNotice])
 
-  const fetchNotices = async () => {
+  const fetchNotices = async (baseUrl?: string) => {
     if (!isAdminLoggedIn()) {
       setShowPasswordInput(true)
       setLoading(false)
       return
     }
-    
+    const url = baseUrl ?? backendUrl
     try {
-      const response = await fetch(`${backendUrl}/api/notices/all`, {
+      const response = await fetch(`${url}/api/notices/all`, {
         headers: getAdminHeaders()
       })
       

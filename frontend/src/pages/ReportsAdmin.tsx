@@ -39,12 +39,14 @@ function ReportsAdmin() {
   const [endDate, setEndDate] = useState('')
 
   useEffect(() => {
-    const savedBackendUrl = localStorage.getItem('backendUrl') || 'http://localhost:3000'
+    const origin = window.location.origin
+    const isDevServer = origin.includes('5173') || !origin
+    const savedBackendUrl = !isDevServer ? origin : (localStorage.getItem('backendUrl') || 'http://localhost:3000')
     setBackendUrl(savedBackendUrl)
     initializeAdminAuth(savedBackendUrl)
     
     if (isAdminLoggedIn()) {
-      fetchReports()
+      fetchReports(savedBackendUrl)
     } else {
       setShowPasswordInput(true)
     }
@@ -52,9 +54,10 @@ function ReportsAdmin() {
     setLoading(false)
   }, [])
 
-  const fetchReports = async () => {
+  const fetchReports = async (baseUrlOverride?: string) => {
     if (!isAdminLoggedIn()) return
     
+    const url = baseUrlOverride ?? backendUrl
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -62,7 +65,7 @@ function ReportsAdmin() {
       if (endDate) params.append('endDate', endDate)
       
       const queryString = params.toString()
-      const baseUrl = `${backendUrl}/api/reports`
+      const baseUrl = `${url}/api/reports`
       
       const [statsRes, unitsRes] = await Promise.all([
         fetch(`${baseUrl}/statistics${queryString ? '?' + queryString : ''}`, {
