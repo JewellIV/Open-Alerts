@@ -253,7 +253,7 @@ function ReportsAdmin() {
                 </div>
                 <div className="flex items-end">
                   <button
-                    onClick={fetchReports}
+                    onClick={() => fetchReports()}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                   >
                     Apply
