@@ -168,9 +168,9 @@ function ActiveScreen({ alert, onDismiss }: ActiveScreenProps) {
           </button>
         </div>
 
-        {/* Map - full width on mobile, side-by-side on large screens. Kept square on all screen sizes. */}
-        <div className="w-full lg:w-1/2 p-2 sm:p-4 flex items-center justify-center min-h-[200px] lg:min-h-0 lg:h-auto">
-          <div className="w-full min-h-[180px] lg:min-h-0 aspect-square max-w-4xl">
+        {/* Map - full width on mobile, side-by-side on large screens. Square on all sizes (no stretch). */}
+        <div className="w-full lg:w-1/2 lg:self-center p-2 sm:p-4 flex items-center justify-center min-h-[200px] lg:min-h-0 shrink-0">
+          <div className="w-full min-h-[180px] lg:min-h-0 aspect-square max-w-4xl overflow-hidden">
             <MapComponent address={alert.address} callType={alert.call_type} latitude={alert.latitude} longitude={alert.longitude} />
           </div>
         </div>
