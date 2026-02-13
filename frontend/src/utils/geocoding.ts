@@ -355,7 +355,37 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
       console.error('Structured query failed:', error)
     }
   }
-  
+
+  // Last resort: geocode city + state + zip so map shows correct area (e.g. Aylett) instead of station
+  const placeQuery = city && zip ? `${city}, VA ${zip}` : zip ? `Virginia ${zip}` : null
+  if (placeQuery) {
+    try {
+      const placeResponse = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(placeQuery)}&format=json&limit=1&countrycodes=us`,
+        {
+          headers: {
+            'User-Agent': 'Mangohick Fire Station Status Board - OpenAlerts',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        }
+      )
+      if (placeResponse.ok) {
+        const placeData: GeocodeResult[] = await placeResponse.json()
+        if (placeData && placeData.length > 0) {
+          const place = placeData[0]
+          const lat = parseFloat(String(place.lat))
+          const lon = parseFloat(String(place.lon))
+          if (!isNaN(lat) && !isNaN(lon) && lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66) {
+            console.log('Geocoded place (city/zip) as fallback:', placeQuery, { lat, lon }, place.display_name)
+            return { lat, lon }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Place fallback geocode failed:', e)
+    }
+  }
+
   console.warn('All geocoding attempts failed for address:', address)
   return null
   })()

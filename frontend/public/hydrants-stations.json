@@ -1,0 +1,7 @@
+{
+  "stations": [
+    { "id": "mvfd", "name": "Mangohick VFD", "lat": 37.8015866, "lon": -77.2585322 }
+  ],
+  "dryHydrants": [],
+  "countyHydrants": []
+}

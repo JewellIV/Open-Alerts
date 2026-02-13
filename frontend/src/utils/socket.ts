@@ -5,13 +5,19 @@ let socketInstance: Socket | null = null
 
 export function getSocket(): Socket {
   if (!socketInstance) {
-    // Use env, then localStorage, then current page origin (so one build works from Pi or PC by IP)
+    // When the page is loaded from the app URL (e.g. alerts.mangohickfire.com:3000), use that origin
+    // so the socket connects to the same host. Otherwise localStorage/192.168.68.92 would be used
+    // and cause cross-origin or wrong-host requests (e.g. "Reconnecting" when remote).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const env = (import.meta as any).env as Record<string, string | undefined>
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const isDevServer = origin.includes('5173') || !origin
     const backendUrl =
-      env.VITE_BACKEND_URL ||
-      (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
-      'http://localhost:3000'
+      (typeof window !== 'undefined' && !isDevServer && origin)
+        ? origin
+        : env.VITE_BACKEND_URL ||
+          (typeof window !== 'undefined' && localStorage.getItem('backendUrl')) ||
+          'http://localhost:3000'
 
     console.log(`🔌 Connecting to backend at: ${backendUrl}`)
     

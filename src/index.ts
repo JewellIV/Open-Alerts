@@ -2355,8 +2355,8 @@ app.get('*', (req: Request, res: Response) => {
   }
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`🚨 OpenAlerts API server running on http://localhost:${PORT}`);
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`🚨 OpenAlerts API server running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Database initialized at: alerts.db`);
   console.log(`🔌 Socket.io server ready`);
   

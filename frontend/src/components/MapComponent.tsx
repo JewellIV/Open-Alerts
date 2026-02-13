@@ -2,6 +2,12 @@ import { useEffect, useState, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { geocodeAddress, DEFAULT_STATION_COORDS } from '../utils/geocoding'
+import {
+  loadHydrantsStations,
+  getClosestTwo,
+  typeLabel,
+  type HydrantsStationsData,
+} from '../utils/mapLayers'
 import 'leaflet/dist/leaflet.css'
 
 // Fix for default marker icons in react-leaflet
@@ -16,6 +22,44 @@ const defaultIcon = L.icon({
 })
 
 L.Marker.prototype.options.icon = defaultIcon
+
+function createCircleIcon(color: string, size = 12) {
+  return L.divIcon({
+    className: 'map-layer-icon',
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+
+// Red Maltese cross with "F" in center (fire department symbol). 8-point star shape.
+const MALTESE_CROSS_SVG = (size: number) => {
+  const s = size
+  const c = s / 2
+  const R = c - 1
+  const r = R * 0.4
+  const pts: string[] = []
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI) / 4 - Math.PI / 2
+    const rad = i % 2 === 0 ? R : r
+    pts.push(`${c + rad * Math.cos(angle)},${c + rad * Math.sin(angle)}`)
+  }
+  const points = pts.join(' ')
+  return `<div style="width:${s}px;height:${s}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))"><svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg"><polygon points="${points}" fill="#b91c1c" stroke="#7f1d1d" stroke-width="0.8"/><text x="${c}" y="${c + 4}" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-weight="bold" font-size="11">F</text></svg></div>`
+}
+
+function createMalteseCrossIcon(size = 32) {
+  return L.divIcon({
+    className: 'map-layer-icon',
+    html: MALTESE_CROSS_SVG(size),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+
+const stationIcon = createMalteseCrossIcon(32)
+const dryHydrantIcon = createCircleIcon('#dc2626')
+const countyHydrantIcon = createCircleIcon('#2563eb')
 
 // Component to update map center when coordinates change
 function MapUpdater({ center }: { center: [number, number] }) {
@@ -40,6 +84,7 @@ function MapComponent({ address, callType, latitude, longitude }: MapComponentPr
   const [coordinates, setCoordinates] = useState<{ lat: number; lon: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [layerData, setLayerData] = useState<HydrantsStationsData | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const cancelledRef = useRef(false)
 
@@ -127,6 +172,14 @@ function MapComponent({ address, callType, latitude, longitude }: MapComponentPr
     }
   }, [address, latitude, longitude])
 
+  useEffect(() => {
+    loadHydrantsStations().then(setLayerData)
+  }, [])
+
+  const closestTwo = coordinates
+    ? getClosestTwo(coordinates.lat, coordinates.lon, layerData)
+    : []
+
   if (loading) {
     return (
       <div className="w-full h-full bg-gray-800 rounded-lg flex items-center justify-center">
@@ -167,7 +220,40 @@ function MapComponent({ address, callType, latitude, longitude }: MapComponentPr
             </div>
           </Popup>
         </Marker>
+        {layerData?.stations.map((p) => (
+          <Marker key={`station-${p.id}`} position={[p.lat, p.lon]} icon={stationIcon}>
+            <Popup>
+              <div className="text-sm font-medium">Station: {p.name || p.id}</div>
+            </Popup>
+          </Marker>
+        ))}
+        {layerData?.dryHydrants.map((p) => (
+          <Marker key={`dry-${p.id}`} position={[p.lat, p.lon]} icon={dryHydrantIcon}>
+            <Popup>
+              <div className="text-sm">Dry Hydrant{p.name ? `: ${p.name}` : ''}</div>
+            </Popup>
+          </Marker>
+        ))}
+        {layerData?.countyHydrants.map((p) => (
+          <Marker key={`county-${p.id}`} position={[p.lat, p.lon]} icon={countyHydrantIcon}>
+            <Popup>
+              <div className="text-sm">County Hydrant{p.name ? `: ${p.name}` : ''}</div>
+            </Popup>
+          </Marker>
+        ))}
       </MapContainer>
+      {closestTwo.length > 0 && (
+        <div className="absolute top-2 left-2 right-2 z-[1000] bg-gray-900/90 text-white text-xs rounded p-2 shadow max-w-xs">
+          <div className="font-semibold mb-1">Closest 2 hydrants</div>
+          {closestTwo.map(({ point, miles }, i) => (
+            <div key={`closest-${i}-${point.id}`} className="flex items-center gap-2 py-0.5">
+              <span className="text-gray-400">{i + 1}.</span>
+              <span>{typeLabel(point.type)}: {point.name || point.id}</span>
+              <span className="text-gray-400 ml-auto">{miles.toFixed(2)} mi</span>
+            </div>
+          ))}
+        </div>
+      )}
       {error && (
         <div className="absolute bottom-2 left-2 bg-yellow-600 bg-opacity-75 text-white text-xs px-2 py-1 rounded max-w-xs">
           <div className="font-semibold">⚠️ Using Station Location</div>

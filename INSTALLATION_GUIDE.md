@@ -935,6 +935,19 @@ Save, then reboot. If you still see a black screen with cursor **before** the de
 3. Find where npm installs globals: `npm config get prefix` (often `/usr/local`). Ensure that path/bin (e.g. `/usr/local/bin`) is in your PATH.
 4. As a workaround you can run: `npx pm2 start ecosystem.config.cjs` (from project root; npx uses the local or global pm2).
 
+#### Stuck on "Reconnecting" (e.g. when using http://alerts.mangohickfire.com:3000)
+
+**Symptoms:** Dashboard loads but shows "Reconnecting" and never connects to the backend.
+
+**Solutions:**
+1. **Verify the backend is reachable** from the same device/browser:
+   - Open: `http://alerts.mangohickfire.com:3000/health` (or your server URL). You should see `{"status":"ok",...}`. If that fails, the backend is not reachable (DNS, firewall, or port).
+2. **Port forwarding:** If you're opening the site from outside your network, the router must forward **TCP port 3000** to the Raspberry Pi’s local IP. The backend must be running on the Pi and listening on `0.0.0.0` (the guide uses this so it accepts external connections).
+3. **Firewall on the Pi:** Allow port 3000: `sudo ufw allow 3000` (if using ufw), or ensure no firewall is blocking incoming 3000.
+4. **Backend running:** On the Pi run: `pm2 status` or `curl http://localhost:3000/health`. If the backend crashed, restart it: `pm2 restart mvfd-backend`.
+5. **Browser console:** Press F12 → Console. Look for socket errors (e.g. `reconnection error`, `polling error`, or blocked mixed content). If you see CORS or "Failed to load", the server may not be reachable from your network.
+6. **Same URL for page and socket:** The app connects the socket to the same origin as the page (e.g. `http://alerts.mangohickfire.com:3000`). If you bookmarked or typed a different URL (e.g. IP vs domain), try the exact URL you use for the dashboard.
+
 #### Display Not Showing Dashboard
 
 **Symptoms:** Blank screen or error message
