@@ -37,8 +37,11 @@ function NoticesAdmin() {
   const [backendUrl, setBackendUrl] = useState('http://localhost:3000')
 
   useEffect(() => {
-    // Initialize admin auth
-    const savedBackendUrl = localStorage.getItem('backendUrl') || 'http://localhost:3000'
+    // Use current origin when viewing from app URL so fetch succeeds (same as socket / Room Speaker Admin).
+    const origin = window.location.origin
+    const isDevServer = origin.includes('5173') || !origin
+    const savedBackendUrl = !isDevServer ? origin : (localStorage.getItem('backendUrl') || 'http://localhost:3000')
+
     setBackendUrl(savedBackendUrl)
     initializeAdminAuth(savedBackendUrl)
     

@@ -3,11 +3,7 @@ import { Socket } from 'socket.io-client'
 import IdleScreen from './components/IdleScreen'
 import ActiveScreen from './components/ActiveScreen'
 import { playFireAlert, playEMSAlert, getCallTypeCategory } from './utils/soundAlerts'
-const NoticesAdmin = lazy(() => import('./pages/NoticesAdmin'))
-const RoomSpeakerAdmin = lazy(() => import('./pages/RoomSpeakerAdmin'))
-const StationUnitsAdmin = lazy(() => import('./pages/StationUnitsAdmin'))
-const ReportsAdmin = lazy(() => import('./pages/ReportsAdmin'))
-const SendAlertAdmin = lazy(() => import('./pages/SendAlertAdmin'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
 import { announceAlert } from './utils/speechManager'
 import { getSocket } from './utils/socket'
 import { initializeLights, flashAlertLights, stopLights, areLightsAvailable } from './utils/lightController'
@@ -165,21 +161,21 @@ function App() {
       // Map hash to page names
       const pageMap: Record<string, string> = {
         'admin': 'admin',
+        'notices': 'admin',
         'notices-admin': 'admin',
-        'send-alert': 'send-alert',
-        'room-speaker-admin': 'room-speaker',
-        'room-speaker': 'room-speaker',
-        'station-units-admin': 'station-units',
-        'station-units': 'station-units',
-        'reports-admin': 'reports',
-        'reports': 'reports',
+        'send-alert': 'admin',
+        'room-speaker-admin': 'admin',
+        'room-speaker': 'admin',
+        'station-units-admin': 'admin',
+        'station-units': 'admin',
+        'reports-admin': 'admin',
+        'reports': 'admin',
         'dashboard': 'dashboard',
         'room': 'dashboard',
         'station': 'dashboard'
       }
       const page = pageMap[hash] || 'dashboard'
       setCurrentPage(page)
-      setCurrentPage(hash)
     }
     
     handleHashChange()
@@ -464,21 +460,9 @@ function App() {
     }
   }, []) // Empty dependency array - only run once on mount
 
-  // Show admin pages based on hash (lazy loaded)
+  // Single admin page with tabs (Notices, Send Alert, Speakers, Units, Reports)
   if (currentPage === 'admin') {
-    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><NoticesAdmin /></Suspense>
-  }
-  if (currentPage === 'send-alert') {
-    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><SendAlertAdmin /></Suspense>
-  }
-  if (currentPage === 'room-speaker') {
-    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><RoomSpeakerAdmin /></Suspense>
-  }
-  if (currentPage === 'station-units') {
-    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><StationUnitsAdmin /></Suspense>
-  }
-  if (currentPage === 'reports') {
-    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><ReportsAdmin /></Suspense>
+    return <Suspense fallback={<div className="h-screen flex items-center justify-center bg-gray-900 text-gray-400">Loading...</div>}><AdminPage /></Suspense>
   }
 
   // Always show something, even if there's an error
@@ -502,42 +486,14 @@ function App() {
 
   return (
     <div className="h-screen min-h-dvh w-full min-w-0 overflow-hidden flex flex-col bg-gray-900">
-      {/* Admin links - hidden but accessible */}
-      <div className="absolute bottom-2 left-2 flex flex-wrap gap-1 sm:gap-2 z-50 max-w-full">
+      {/* Admin link - opens tabbed Admin page (Notices, Send Alert, Speakers, Units, Reports) */}
+      <div className="absolute bottom-2 left-2 z-50">
         <a 
           href="#admin" 
           className="text-xs text-gray-600 hover:text-gray-400"
-          title="Notices Admin"
+          title="Admin: Notices, Send Alert, Speakers, Units, Reports"
         >
           Admin
-        </a>
-        <a 
-          href="#send-alert" 
-          className="text-xs text-gray-600 hover:text-gray-400"
-          title="Send Alert"
-        >
-          Send Alert
-        </a>
-        <a 
-          href="#room-speaker" 
-          className="text-xs text-gray-600 hover:text-gray-400"
-          title="Room Speaker Control"
-        >
-          Speakers
-        </a>
-        <a 
-          href="#station-units" 
-          className="text-xs text-gray-600 hover:text-gray-400"
-          title="Station Units Management"
-        >
-          Units
-        </a>
-        <a 
-          href="#reports" 
-          className="text-xs text-gray-600 hover:text-gray-400"
-          title="Reports & Analytics"
-        >
-          Reports
         </a>
       </div>
       <div className="flex-1 min-h-0 relative">

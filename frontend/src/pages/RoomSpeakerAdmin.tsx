@@ -70,19 +70,22 @@ function RoomSpeakerAdmin() {
   }
 
   useEffect(() => {
-    // Load existing config
+    // Load existing config. Use current origin when viewing from app URL so units fetch succeeds
+    // (otherwise localStorage may point to 192.168.68.92 which can be unreachable when remote).
     const savedRoomId = localStorage.getItem('roomId')
     const savedRoomName = localStorage.getItem('roomName')
-    const savedBackendUrl = localStorage.getItem('backendUrl') || 'http://localhost:3000'
-    
+    const origin = window.location.origin
+    const isDevServer = origin.includes('5173') || !origin
+    const savedBackendUrl = !isDevServer ? origin : (localStorage.getItem('backendUrl') || 'http://localhost:3000')
+
     setBackendUrl(savedBackendUrl)
     initializeAdminAuth(savedBackendUrl)
-    
+
     if (savedRoomId) {
       setRoomId(savedRoomId)
       setRoomName(savedRoomName || savedRoomId)
     }
-    
+
     // Always fetch available units (public endpoint, no auth required)
     fetchAvailableUnits(savedBackendUrl)
     
