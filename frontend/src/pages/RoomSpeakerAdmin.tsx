@@ -609,7 +609,7 @@ function RoomSpeakerAdmin() {
               {availableRooms.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <p>No rooms configured on backend</p>
-                  <p className="text-xs mt-2">Configure rooms in backend .env file</p>
+                  <p className="text-xs mt-2">Add a room via the form on the left (Room ID + Room Name, then Save), or set ROOM_SPEAKERS in the backend .env file.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
