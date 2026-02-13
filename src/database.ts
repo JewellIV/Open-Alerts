@@ -80,6 +80,18 @@ try {
   // Column already exists, ignore error
 }
 
+// Add latitude/longitude to alerts for map (optional; dispatch can send them)
+try {
+  db.exec(`ALTER TABLE alerts ADD COLUMN latitude REAL`);
+} catch (error) {
+  // Column already exists, ignore error
+}
+try {
+  db.exec(`ALTER TABLE alerts ADD COLUMN longitude REAL`);
+} catch (error) {
+  // Column already exists, ignore error
+}
+
 // Create analytics tables for reporting
 db.exec(`
   CREATE TABLE IF NOT EXISTS alert_analytics (

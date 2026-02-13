@@ -32,6 +32,8 @@ POST http://192.168.68.92:3000/api/alert
    - `address` (string) – incident address
    - `units` (string) – comma-separated units, e.g. "Engine 2, Medic 21"
    - `narrative` (string, optional) – additional details
+   - `latitude` (number, optional) – incident latitude (e.g. 37.8015866). If provided with `longitude`, the map uses this instead of geocoding the address.
+   - `longitude` (number, optional) – incident longitude (e.g. -77.0932782). Use with `latitude` for accurate map pin.
 
 ---
 
@@ -43,6 +45,19 @@ POST http://192.168.68.92:3000/api/alert
   "address": "123 Main St, Aylett, VA 23009",
   "units": "Engine 2, Ladder 1, Medic 21",
   "narrative": "Reported structure fire with smoke visible"
+}
+```
+
+With optional latitude/longitude (recommended when dispatch has coordinates so the map shows the correct location):
+
+```json
+{
+  "call_type": "Structure Fire",
+  "address": "123 Main St, Aylett, VA 23009",
+  "units": "Engine 2, Ladder 1",
+  "narrative": "Reported structure fire",
+  "latitude": 37.8015866,
+  "longitude": -77.0932782
 }
 ```
 

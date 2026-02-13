@@ -32,15 +32,34 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
   // Parse address components - extract city, state, and zip
   const zipMatch = normalizedAddress.match(/\b(\d{5})\b/)
   const zip = zipMatch ? zipMatch[1] : null
-  
-  // Extract city name (common Virginia cities)
-  const cityMatch = normalizedAddress.match(/\b(?:Aylett|Hanover|Richmond|Mechanicsville|Ashland|Glen Allen|Short Pump|King William|West Point|New Kent|Williamsburg|Yorktown|Newport News|Hampton|Norfolk|Virginia Beach|Portsmouth|Suffolk|Chesapeake|Fredericksburg|Spotsylvania|Stafford|Caroline|Louisa|Goochland|Powhatan|Chesterfield|Henrico|Hanover|Charles City|New Kent|King and Queen|Essex|Middlesex|Lancaster|Northumberland|Westmoreland|Richmond County|Northampton|Accomack)\b/i)
-  const city = cityMatch ? cityMatch[1] : null
-  
-  // Extract street number and name - more flexible pattern
-  const streetMatch = normalizedAddress.match(/^(\d+)\s+(.+?)(?:\s*,\s*|\s+)(?:[A-Za-z\s]+)?(?:\s*,\s*)?(?:VA|Virginia)?(?:\s+\d{5})?/i)
-  const streetNumber = streetMatch ? streetMatch[1] : null
-  const streetName = streetMatch ? streetMatch[2].trim() : null
+
+  // Prefer comma-based split so "205 Meadow Ln. Aylett, VA 23009" keeps "205 Meadow Ln." as street
+  const parts = normalizedAddress.split(/\s*,\s*/).map(p => p.trim())
+  let streetNumber: string | null = null
+  let streetName: string | null = null
+  let city: string | null = null
+  if (parts.length >= 2) {
+    const streetPart = parts[0] // e.g. "205 Meadow Ln."
+    const cityPart = parts.length >= 3 ? parts[1] : null // e.g. "Aylett"
+    const numMatch = streetPart.match(/^(\d+)\s+(.+)$/)
+    if (numMatch) {
+      streetNumber = numMatch[1]
+      streetName = numMatch[2].trim() // "Meadow Ln." preserved
+    }
+    if (cityPart && /^[A-Za-z\s]+$/.test(cityPart)) city = cityPart
+  }
+  if (!city) {
+    const cityMatch = normalizedAddress.match(/\b(?:Aylett|Hanover|Richmond|Mechanicsville|Ashland|Glen Allen|Short Pump|King William|West Point|New Kent|Williamsburg|Yorktown|Newport News|Hampton|Norfolk|Virginia Beach|Portsmouth|Suffolk|Chesapeake|Fredericksburg|Spotsylvania|Stafford|Caroline|Louisa|Goochland|Powhatan|Chesterfield|Henrico|Hanover|Charles City|New Kent|King and Queen|Essex|Middlesex|Lancaster|Northumberland|Westmoreland|Richmond County|Northampton|Accomack)\b/i)
+    city = cityMatch ? cityMatch[1] : null
+  }
+  // Fallback: no commas - use regex to get number + rest of street (e.g. "205 Meadow Ln")
+  if ((!streetNumber || !streetName) && /^\d+/.test(normalizedAddress)) {
+    const fallbackMatch = normalizedAddress.match(/^(\d+)\s+(.+?)(?:\s+(?:VA|Virginia)\s+\d{5}|$)/i)
+    if (fallbackMatch) {
+      streetNumber = streetNumber ?? fallbackMatch[1]
+      streetName = streetName ?? fallbackMatch[2].trim().replace(/\s+(?:VA|Virginia)\s+\d{5}$/i, '').trim()
+    }
+  }
   
   // Try multiple address variations to improve success rate
   const addressVariations: string[] = []

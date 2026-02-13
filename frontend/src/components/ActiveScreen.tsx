@@ -13,6 +13,8 @@ interface Alert {
   display_units?: string | null
   narrative: string | null
   recording_url?: string | null
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface ActiveScreenProps {
@@ -169,7 +171,7 @@ function ActiveScreen({ alert, onDismiss }: ActiveScreenProps) {
         {/* Map - full width on mobile, side-by-side on large screens */}
         <div className="w-full lg:w-1/2 p-2 sm:p-4 flex items-center justify-center min-h-[200px] lg:min-h-0 lg:h-auto">
           <div className="w-full h-full min-h-[180px] lg:min-h-0 max-w-4xl">
-            <MapComponent address={alert.address} callType={alert.call_type} />
+            <MapComponent address={alert.address} callType={alert.call_type} latitude={alert.latitude} longitude={alert.longitude} />
           </div>
         </div>
       </div>

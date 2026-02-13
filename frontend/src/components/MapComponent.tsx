@@ -31,9 +31,12 @@ function MapUpdater({ center }: { center: [number, number] }) {
 interface MapComponentProps {
   address: string
   callType?: string
+  /** If dispatch sends latitude/longitude, map uses these and skips geocoding */
+  latitude?: number | null
+  longitude?: number | null
 }
 
-function MapComponent({ address, callType }: MapComponentProps) {
+function MapComponent({ address, callType, latitude, longitude }: MapComponentProps) {
   const [coordinates, setCoordinates] = useState<{ lat: number; lon: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,16 +48,24 @@ function MapComponent({ address, callType }: MapComponentProps) {
       setLoading(true)
       setError(null)
       cancelledRef.current = false
-      
+
+      const lat = latitude != null && !isNaN(Number(latitude)) ? Number(latitude) : null
+      const lon = longitude != null && !isNaN(Number(longitude)) ? Number(longitude) : null
+      if (lat != null && lon != null && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+        setCoordinates({ lat, lon })
+        setLoading(false)
+        return
+      }
+
       // Clean up the address - remove extra whitespace
       const cleanAddress = address.trim()
-      
+
       if (!cleanAddress) {
         setCoordinates(DEFAULT_STATION_COORDS)
         setLoading(false)
         return
       }
-      
+
       // Add a timeout wrapper (6 seconds total - geocoding has 5s internal timeout)
       timeoutRef.current = setTimeout(() => {
         if (!cancelledRef.current) {
@@ -65,7 +76,7 @@ function MapComponent({ address, callType }: MapComponentProps) {
           cancelledRef.current = true
         }
       }, 6000)
-      
+
       try {
         const coords = await geocodeAddress(cleanAddress)
         
@@ -124,7 +135,7 @@ function MapComponent({ address, callType }: MapComponentProps) {
       }
       cancelledRef.current = true
     }
-  }, [address])
+  }, [address, latitude, longitude])
 
   if (loading) {
     return (

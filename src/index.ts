@@ -480,7 +480,7 @@ app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
       body: req.body
     });
 
-    const { call_type, address, units, narrative } = req.body;
+    const { call_type, address, units, narrative, latitude, longitude } = req.body;
 
     // Validate required fields
     if (!call_type || !address || !units) {
@@ -491,14 +491,19 @@ app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
       });
     }
 
-    // Insert alert into database (with source tracking)
+    const lat = latitude != null && latitude !== '' ? parseFloat(String(latitude)) : null;
+    const lon = longitude != null && longitude !== '' ? parseFloat(String(longitude)) : null;
+    const validLat = lat != null && !isNaN(lat) && lat >= -90 && lat <= 90 ? lat : null;
+    const validLon = lon != null && !isNaN(lon) && lon >= -180 && lon <= 180 ? lon : null;
+
+    // Insert alert into database (with source tracking and optional lat/lon)
     const source = req.body.source || 'api';
     const stmt = db.prepare(`
-      INSERT INTO alerts (call_type, address, units, narrative, source)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO alerts (call_type, address, units, narrative, source, latitude, longitude)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(call_type, address, units, narrative || null, source);
+    const result = stmt.run(call_type, address, units, narrative || null, source, validLat, validLon);
 
     const alert = {
       id: result.lastInsertRowid,
@@ -508,7 +513,9 @@ app.post('/api/alert', validateApiKey, (req: Request, res: Response) => {
       units,
       display_units: resolveUnitsForDisplay(units),
       narrative: narrative || null,
-      recording_url: null
+      recording_url: null,
+      latitude: validLat,
+      longitude: validLon
     };
 
     console.log('Alert saved:', alert);
