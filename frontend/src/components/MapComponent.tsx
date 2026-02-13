@@ -92,17 +92,7 @@ function MapComponent({ address, callType, latitude, longitude }: MapComponentPr
       
         if (coords) {
         setCoordinates(coords)
-        // Only show error if coordinates match station exactly (likely a fallback)
-        const latDiff = Math.abs(coords.lat - DEFAULT_STATION_COORDS.lat)
-        const lonDiff = Math.abs(coords.lon - DEFAULT_STATION_COORDS.lon)
-        
-        // If coordinates are very close to station (within 0.01 degrees), it's likely a fallback
-        if (latDiff < 0.01 && lonDiff < 0.01) {
-          setError(`Address "${cleanAddress}" not found, showing station location`)
-        } else {
-          // We got coordinates - assume it's a valid location (exact or close)
-          setError(null)
-        }
+        setError(null)
       } else {
         // Fallback to default station coordinates
         setCoordinates(DEFAULT_STATION_COORDS)

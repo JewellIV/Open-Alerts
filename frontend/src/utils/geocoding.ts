@@ -63,10 +63,22 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
   
   // Try multiple address variations to improve success rate
   const addressVariations: string[] = []
-  
+
+  // Strip trailing period after street type (e.g. "Meadow Ln." -> "Meadow Ln") so Nominatim can match
+  const streetNameNoPeriod = streetName ? streetName.replace(/\.\s*$/, '').trim() : null
+
+  // 0. Try without period first (Nominatim often doesn't match "Ln." literally)
+  if (streetNumber && streetNameNoPeriod && (streetNameNoPeriod !== streetName || streetName?.endsWith('.'))) {
+    if (city && zip) {
+      addressVariations.push(`${streetNumber} ${streetNameNoPeriod}, ${city}, VA ${zip}`)
+    } else if (zip) {
+      addressVariations.push(`${streetNumber} ${streetNameNoPeriod}, VA ${zip}`)
+    }
+  }
+
   // 1. Original address (highest priority)
   addressVariations.push(normalizedAddress)
-  
+
   // 2. With proper formatting and commas
   let formattedAddress = normalizedAddress
     .replace(/\s+(VA|Virginia)\s+(\d{5})/i, ', $1 $2')
@@ -155,6 +167,7 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
     Object.entries(expandMap).forEach(([abbrev, full]) => {
       expandedStreet = expandedStreet.replace(new RegExp(`\\b${abbrev}\\b`, 'i'), full)
     })
+    expandedStreet = expandedStreet.replace(/\.\s*$/, '').trim() // "Meadow Lane." -> "Meadow Lane"
     if (expandedStreet !== streetName && streetNumber) {
       if (city && zip) {
         addressVariations.push(`${streetNumber} ${expandedStreet}, ${city}, VA ${zip}`)
@@ -163,21 +176,30 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
       }
     }
   }
-  
-  // 7. Try without house number (for rural areas)
-  if (streetName) {
-    if (city && zip) {
-      addressVariations.push(`${streetName}, ${city}, VA ${zip}`)
-    } else if (zip) {
-      addressVariations.push(`${streetName}, VA ${zip}`)
+
+  // 6b. "Meadow Lane" (expanded, no period) as first-class variation so it's tried early
+  if (streetNumber && streetNameNoPeriod) {
+    const expandedNoPeriod = streetNameNoPeriod.replace(/\bLn\b/i, 'Lane').replace(/\bSt\b/i, 'Street').replace(/\bRd\b/i, 'Road').replace(/\bDr\b/i, 'Drive')
+    if (expandedNoPeriod !== streetNameNoPeriod && city && zip) {
+      addressVariations.push(`${streetNumber} ${expandedNoPeriod}, ${city}, VA ${zip}`)
     }
   }
   
-  // Remove duplicates
+  // 7. Try without house number (for rural areas) - road name only often exists in OSM
+  if (streetName) {
+    const roadOnly = (streetNameNoPeriod || streetName).replace(/\.\s*$/, '')
+    if (city && zip) {
+      addressVariations.push(`${roadOnly}, ${city}, VA ${zip}`)
+    } else if (zip) {
+      addressVariations.push(`${roadOnly}, VA ${zip}`)
+    }
+  }
+  
+  // Remove duplicates (keeps insertion order)
   const uniqueVariations = [...new Set(addressVariations)]
   
-  // Limit to first 5 most likely variations to speed up geocoding
-  const variationsToTry = uniqueVariations.slice(0, 5)
+  // Try more variations (8) so "no period" and "Lane" and "road only" get a chance
+  const variationsToTry = uniqueVariations.slice(0, 8)
   
   // Set a timeout for the entire geocoding operation (5 seconds max)
   const timeoutPromise = new Promise<null>((resolve) => {
@@ -292,19 +314,18 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
   }
   
   // Try structured query approach for better exact matching (only if we haven't found anything yet)
-  if (streetNumber && streetName) {
+  const streetForStructured = (streetNameNoPeriod || streetName || '').replace(/\.\s*$/, '').trim()
+  if (streetNumber && streetForStructured) {
     try {
       console.log('Trying structured query approach...')
-      // No delay needed if we've already waited
-      
-      // Build structured query with extracted city and zip if available
-      let structuredQuery = `street=${encodeURIComponent(streetNumber + ' ' + streetName)}&state=VA&country=US&format=json&limit=1`
+      const streetValue = `${streetNumber} ${streetForStructured}`
+      let structuredQuery = `street=${encodeURIComponent(streetValue)}&state=VA&country=US&format=json&limit=5`
       if (city && zip) {
-        structuredQuery = `street=${encodeURIComponent(streetNumber + ' ' + streetName)}&city=${encodeURIComponent(city)}&state=VA&postalcode=${zip}&country=US&format=json&limit=1`
+        structuredQuery = `street=${encodeURIComponent(streetValue)}&city=${encodeURIComponent(city)}&state=VA&postalcode=${zip}&country=US&format=json&limit=5`
       } else if (zip) {
-        structuredQuery = `street=${encodeURIComponent(streetNumber + ' ' + streetName)}&state=VA&postalcode=${zip}&country=US&format=json&limit=1`
+        structuredQuery = `street=${encodeURIComponent(streetValue)}&state=VA&postalcode=${zip}&country=US&format=json&limit=5`
       } else if (city) {
-        structuredQuery = `street=${encodeURIComponent(streetNumber + ' ' + streetName)}&city=${encodeURIComponent(city)}&state=VA&country=US&format=json&limit=1`
+        structuredQuery = `street=${encodeURIComponent(streetValue)}&city=${encodeURIComponent(city)}&state=VA&country=US&format=json&limit=5`
       }
       const structuredResponse = await fetch(
         `https://nominatim.openstreetmap.org/search?${structuredQuery}`,
