@@ -34,9 +34,8 @@ if (Gpio && process.platform === 'linux') {
   ROOM_PINS.forEach((pin) => {
     try {
       const r = new Gpio(pin, 'out');
-      r.writeSync(RELAY_ACTIVE_HIGH ? 0 : 0); // start unmuted (relay off)
       relays.set(pin, r);
-      console.log(`✅ Relay GPIO ${pin} initialized`);
+      console.log(`✅ Relay GPIO ${pin} opened`);
     } catch (err) {
       console.warn(`⚠️ GPIO ${pin}: ${err.message}`);
     }
