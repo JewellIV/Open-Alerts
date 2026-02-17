@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenAlerts Room GPIO relay service (per-room Pi)
+After=network.target
+
+[Service]
+Type=simple
+User=mvfdadmin
+WorkingDirectory=/home/mvfdadmin/room-gpio-service
+# Set pins for this room (e.g. 8-channel relay: 4,5,6,7,8,9,10,11)
+Environment=ROOM_PINS=4,5,6,7,8,9,10,11
+Environment=GPIO_PORT=4000
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

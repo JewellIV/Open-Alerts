@@ -19,6 +19,9 @@ let isQuietMode = false
 let backendUrl = 'http://localhost:3000'
 let unitMapping: Record<string, string> = {} // CAD code -> display name (e.g. ENG2 -> Engine 2)
 
+/** Local room GPIO service (per-room Pi). Frontend tries this first for mute/unmute. */
+const LOCAL_GPIO_URL = 'http://localhost:4000'
+
 /**
  * Set unit mapping for CAD code resolution (call when station-units are loaded)
  */
@@ -103,61 +106,93 @@ export async function toggleQuietMode(): Promise<void> {
 }
 
 /**
- * Mute room speaker
+ * Mute room speaker.
+ * On a room Pi: tries local GPIO service first (localhost:4000), then central backend.
+ * On server Pi: local GPIO may not run; central backend controls amp/relays.
  */
 async function muteRoomSpeaker(): Promise<void> {
   if (!roomConfig) return
-  
+
   try {
+    const usedLocal = await tryLocalGpioMute(true)
+    if (usedLocal) {
+      console.log(`🔇 Room speaker muted (local GPIO): ${roomConfig.roomName}`)
+      return
+    }
+
     const response = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/mute`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mute: true })
     })
-    
+
     if (!response.ok) {
-      // Don't throw error - quiet mode still works locally even if backend fails
       const errorText = await response.text()
       console.warn(`Backend mute failed (${response.status}): ${errorText}. Quiet mode still active locally.`)
       return
     }
-    
-    console.log(`🔇 Room speaker muted: ${roomConfig.roomName}`)
+    console.log(`🔇 Room speaker muted (central): ${roomConfig.roomName}`)
   } catch (error) {
-    // Don't throw error - quiet mode still works locally even if backend fails
     console.warn('Error muting room speaker (quiet mode still active locally):', error)
   }
 }
 
 /**
- * Unmute room speaker
+ * Unmute room speaker.
+ * Tries local GPIO service first (room Pi), then central backend (server Pi).
  */
 async function unmuteRoomSpeaker(): Promise<void> {
   if (!roomConfig) return
-  
+
   try {
+    const usedLocal = await tryLocalGpioMute(false)
+    if (usedLocal) {
+      console.log(`🔊 Room speaker unmuted (local GPIO): ${roomConfig.roomName}`)
+      return
+    }
+
     const response = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/mute`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mute: false })
     })
-    
+
     if (!response.ok) {
-      // Don't throw error - unmute still works locally even if backend fails
       const errorText = await response.text()
       console.warn(`Backend unmute failed (${response.status}): ${errorText}. Quiet mode still disabled locally.`)
       return
     }
-    
-    console.log(`🔊 Room speaker unmuted: ${roomConfig.roomName}`)
+    console.log(`🔊 Room speaker unmuted (central): ${roomConfig.roomName}`)
   } catch (error) {
-    // Don't throw error - unmute still works locally even if backend fails
     console.warn('Error unmuting room speaker (quiet mode still disabled locally):', error)
   }
+}
+
+/**
+ * Try to mute/unmute via local room GPIO service (room Pi).
+ * Gets pin list from central backend for this room, then POSTs to localhost:4000.
+ * Returns true if local GPIO was used, false to fall back to central backend.
+ */
+async function tryLocalGpioMute(mute: boolean): Promise<boolean> {
+  if (!roomConfig) return false
+
+  try {
+    const statusRes = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/status`)
+    if (!statusRes.ok) return false
+    const status = await statusRes.json()
+    const pins = status.pins as number[] | undefined
+    if (!pins || pins.length === 0) return false
+
+    const gpioRes = await fetch(`${LOCAL_GPIO_URL}/gpio/mute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mute, pins })
+    })
+    if (gpioRes.ok) return true
+  } catch (_) {
+    // Local GPIO service not running (e.g. on server Pi or dev machine)
+  }
+  return false
 }
 
 /**

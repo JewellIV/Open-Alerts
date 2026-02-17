@@ -759,6 +759,33 @@ curl http://192.168.1.100:3000/health
    - Select units from popup
    - Click "Save"
 
+#### Per-Room Pi Setup (Room GPIO Service)
+
+When each room has its **own Pi and 8-channel relay** (speaker wire stays short in that room), run the **Room GPIO Service** on that Pi. The **central backend** (engine bay/server Pi) keeps the **single database**; each room Pi only drives its local relays.
+
+**On each room Pi:**
+
+1. Copy the `room-gpio-service` folder to the Pi (e.g. `/home/mvfdadmin/room-gpio-service`).
+2. Install and run:
+   ```bash
+   cd /home/mvfdadmin/room-gpio-service
+   npm install
+   export ROOM_PINS=4,5,6,7,8,9,10,11   # GPIO pins for this room's relay
+   export GPIO_PORT=4000
+   npm start
+   ```
+3. (Optional) Run as systemd service at boot:
+   ```bash
+   sudo cp room-gpio-service.service /etc/systemd/system/
+   sudo nano /etc/systemd/system/room-gpio-service.service   # set ROOM_PINS for this room
+   sudo systemctl daemon-reload
+   sudo systemctl enable room-gpio-service
+   sudo systemctl start room-gpio-service
+   ```
+4. On that room’s **display**, set **Backend URL** to the central server (e.g. `http://alerts.mangohickfire.com:3000`). Quiet mode and mute will control **local** relays via `http://localhost:4000` automatically.
+
+See `room-gpio-service/README.md` for API and env details.
+
 ### Phase 10: Configure Lighting
 
 1. **Get Hue Light IDs:**
@@ -976,6 +1003,11 @@ Save, then reboot. If you still see a black screen with cursor **before** the de
 3. Check GPIO pin assignment: `curl http://192.168.1.100:3000/api/unit-pins`
 4. Verify room unit configuration
 5. Check relay LED (should light when activated)
+
+**Per-room Pi (Room GPIO Service):**
+1. On the room Pi, ensure the room GPIO service is running: `curl http://localhost:4000/health`
+2. Check `ROOM_PINS` in the service match the unit pins for that room (from central `/api/room-speaker/:roomId/status`)
+3. On the display, Backend URL must point to the central server; mute/quiet mode will use localhost:4000 for relays automatically
 
 #### Lights Not Flashing
 
