@@ -502,7 +502,7 @@ sudo ufw enable
    ```env
    VITE_OPENWEATHER_API_KEY=2efd4dcf3bc937b247970302bec1e9e7
    API_KEY=5c6b9987376f3823c5c171e4deefccce22c94ae3271a9c494ec3cee43f945400
-   VITE_BACKEND_URL=http://192.168.1.100:3000
+   VITE_BACKEND_URL=http://192.168.68.92:3000
    VITE_DISPLAY_TYPE=room
    VITE_NIGHT_MODE_ENABLED=true
    VITE_ROOM_ID=[room_name]
@@ -526,7 +526,7 @@ sudo ufw enable
 
 2. **Install Chromium:**
    ```bash
-   sudo apt install -y chromium-browser
+  sudo apt install -y chromium-browser
    ```
 
 3. **Create the autostart file (for the user that autologs in):**
@@ -540,12 +540,15 @@ sudo ufw enable
    [Desktop Entry]
    Type=Application
    Name=MVFD Phoenix Kiosk
-   Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito --password-store=basic --autoplay-policy=no-user-gesture-required http://192.168.1.100:3000
+   Exec=sh -c "sleep 15 && DISPLAY=:0 chromium-browser --kiosk --noerrdialogs --disable-infobars --password-store=basic --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-restore-session-state --user-data-dir=/home/mvfdadmin/.config/chromium-kiosk http://192.168.1.100:3000"
    X-GNOME-Autostart-enabled=true
    Terminal=false
    ```
+   - **Important:** `DISPLAY=:0` is required for Chromium to find the display when auto-starting; without it, Chromium may not launch on boot.
+   - `sleep 15` gives the desktop time to fully start before launching Chromium.
    - `--password-store=basic` avoids the "password for new keyring" popup.
-   - Use `http://localhost:3000` if this display Pi is also the backend Pi; otherwise use `http://<BACKEND_IP>:3000`.
+   - `--user-data-dir` uses a persistent profile so room configuration (localStorage) is saved across reboots. Omit `--incognito` when using this.
+   - Use `http://localhost:3000` if this display Pi is also the backend Pi; otherwise use `http://<BACKEND_IP>:3000` or your public URL (e.g. `http://alerts.mangohickfire.com:3000`).
 
 4. **Optional – Boot splash image:** Show the Open-Alerts logo at boot and keep it on screen until the backend is up and Chromium has loaded, so the desktop is never visible.
    - Copy your bootsplash image to the Pi as `~/Open-Alerts/bootsplash.png`. On the Pi, install required packages (mpv for splash, curl to wait for backend):
@@ -639,12 +642,16 @@ sudo ufw enable
    ```bash
    nano ~/openalerts-kiosk.sh
    ```
-   Contents:
+   Contents (use `--user-data-dir` for persistent room config; omit `--incognito` so localStorage survives reboots):
    ```bash
    #!/bin/bash
    export DISPLAY=:0
    sleep 20
-   chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito --password-store=basic --autoplay-policy=no-user-gesture-required http://192.168.1.100:3000
+   exec chromium-browser --kiosk --noerrdialogs --disable-infobars --password-store=basic \
+     --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check \
+     --disable-session-crashed-bubble --disable-restore-session-state \
+     --user-data-dir=/home/mvfdadmin/.config/chromium-kiosk \
+     http://192.168.1.100:3000
    ```
    Then:
    ```bash

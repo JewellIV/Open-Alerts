@@ -12,6 +12,11 @@ interface StationUnit {
   updated_at?: string
 }
 
+interface UnitPinMapping {
+  pin: number
+  available: boolean
+}
+
 const UNIT_TYPES = [
   'Engine',
   'Ladder',
@@ -33,6 +38,7 @@ function StationUnitsAdmin() {
   const [showPasswordInput, setShowPasswordInput] = useState(false)
   const [editingUnit, setEditingUnit] = useState<StationUnit | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [unitPins, setUnitPins] = useState<Record<string, UnitPinMapping>>({})
   // Initialize from localStorage or current origin so first request uses correct backend (avoids 401 on #station-units)
   const [backendUrl, setBackendUrl] = useState(() =>
     typeof window !== 'undefined'
@@ -71,6 +77,35 @@ function StationUnitsAdmin() {
       if (response.ok) {
         const data = await response.json()
         setUnits(data.units || [])
+
+        // Also fetch GPIO pin mappings for each unit so admins can see wiring
+        try {
+          const pinsResponse = await fetch(`${backendUrl}/api/unit-pins`, {
+            headers: getAdminHeaders()
+          })
+
+          if (pinsResponse.ok) {
+            const pinsData = await pinsResponse.json()
+            const mapping: Record<string, UnitPinMapping> = {}
+
+            ;(pinsData.mappings || []).forEach((m: { unit: string; pin: number; available: boolean }) => {
+              if (m.unit && typeof m.pin === 'number') {
+                mapping[m.unit] = {
+                  pin: m.pin,
+                  available: !!m.available
+                }
+              }
+            })
+
+            setUnitPins(mapping)
+          } else if (pinsResponse.status === 401) {
+            // If admin session expired between calls, force re-login next time
+            clearAdminSession()
+            setShowPasswordInput(true)
+          }
+        } catch (error) {
+          console.error('Error fetching unit pin mappings:', error)
+        }
       } else if (response.status === 401) {
         clearAdminSession()
         setShowPasswordInput(true)
@@ -392,6 +427,15 @@ function StationUnitsAdmin() {
                         <span className="text-xs text-gray-400 bg-gray-600 px-2 py-1 rounded mt-1 inline-block">
                           {unit.unit_type}
                         </span>
+                      )}
+                      {unit.unit_name && unitPins[unit.unit_name] && (
+                        <div className="mt-2 text-xs text-gray-300">
+                          <span className="font-semibold">GPIO Pin:</span>{' '}
+                          <span className="mr-1">{unitPins[unit.unit_name].pin}</span>
+                          <span className={unitPins[unit.unit_name].available ? 'text-green-400' : 'text-yellow-400'}>
+                            {unitPins[unit.unit_name].available ? '(Active on Pi)' : '(Configured, relay not initialized)'}
+                          </span>
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-1">

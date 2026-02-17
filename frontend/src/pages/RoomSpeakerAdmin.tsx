@@ -184,10 +184,35 @@ function RoomSpeakerAdmin() {
         setShowPasswordInput(true)
         return
       }
-      
+
       if (response.ok) {
         const data = await response.json()
         setAvailableRooms(data.rooms || [])
+
+        // If this display doesn't have a room bound yet but the backend
+        // already has a room (e.g., Men's Bunk Room), automatically bind
+        // to the first configured room so Current Room Status works
+        // without forcing an extra "Save Configuration" first.
+        const existingRoomId = localStorage.getItem('roomId')
+        if (!existingRoomId && data.rooms && data.rooms.length > 0) {
+          const firstRoom = data.rooms[0]
+          if (firstRoom?.roomId && firstRoom?.roomName) {
+            localStorage.setItem('roomId', firstRoom.roomId)
+            localStorage.setItem('roomName', firstRoom.roomName)
+            setRoomId(firstRoom.roomId)
+            setRoomName(firstRoom.roomName)
+
+            const config: RoomConfig = {
+              roomId: firstRoom.roomId,
+              roomName: firstRoom.roomName,
+              units: firstRoom.units && firstRoom.units.length > 0 ? firstRoom.units : undefined
+            }
+            setRoomConfig(config)
+            initializeRoomSpeaker(config, backendUrl)
+            // Fetch status for this newly bound room
+            await fetchRoomStatus()
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching available rooms:', error)
