@@ -2,6 +2,7 @@
  * Station units to show in unit selectors (IdleScreen, RoomSpeakerAdmin).
  * If non-empty, only these units are shown; otherwise all units from the API are shown.
  * Keeps the dropdown to your station's units even if the backend has others.
+ * Matching is case-insensitive and trimmed.
  */
 export const STATION_UNITS_WHITELIST: string[] = [
   'Medic 22',
@@ -16,7 +17,12 @@ export const STATION_UNITS_WHITELIST: string[] = [
   'Response 2'
 ]
 
+const whitelistLower = new Set(STATION_UNITS_WHITELIST.map((u) => u.trim().toLowerCase()))
+
 export function filterToStationUnits(unitNames: string[]): string[] {
   if (STATION_UNITS_WHITELIST.length === 0) return unitNames
-  return unitNames.filter((name) => STATION_UNITS_WHITELIST.includes(name))
+  const filtered = unitNames.filter((name) => whitelistLower.has(name.trim().toLowerCase()))
+  // If filter would hide everything, show all API units (backend may use different names)
+  if (filtered.length === 0 && unitNames.length > 0) return unitNames
+  return filtered
 }
