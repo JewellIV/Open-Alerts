@@ -19,16 +19,38 @@ function isPrivateUrl(url: string): boolean {
   }
 }
 
+let _apiBaseLogged = false
+function logApiBaseOnce(url: string, note?: string): void {
+  if (!_apiBaseLogged) {
+    console.log('Using API base:', url, note ?? '')
+    _apiBaseLogged = true
+  }
+}
+
 export function getEffectiveBackendUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:3000'
   const env = (import.meta as any)?.env?.VITE_BACKEND_URL as string | undefined
-  if (env) return env
+  if (env) {
+    logApiBaseOnce(env)
+    return env
+  }
   const origin = window.location.origin
-  const stored = localStorage.getItem('backendUrl')
-  const candidate = stored || origin || 'http://localhost:3000'
-  if (!origin || origin.includes('5173')) return candidate
-  if (isPrivateUrl(candidate) && !isPrivateUrl(origin)) {
+  // When loaded from a public origin (e.g. alerts.mangohickfire.com), always use it
+  // so API calls are same-origin and not blocked by Private Network Access.
+  if (origin && !origin.includes('5173') && !isPrivateUrl(origin)) {
+    logApiBaseOnce(origin)
     return origin
   }
+  const stored = localStorage.getItem('backendUrl')
+  const candidate = stored || origin || 'http://localhost:3000'
+  if (!origin || origin.includes('5173')) {
+    logApiBaseOnce(candidate)
+    return candidate
+  }
+  if (isPrivateUrl(candidate) && !isPrivateUrl(origin)) {
+    logApiBaseOnce(origin, '(overrode private stored URL)')
+    return origin
+  }
+  logApiBaseOnce(candidate)
   return candidate
 }

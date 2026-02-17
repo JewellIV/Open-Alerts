@@ -4,6 +4,7 @@
  */
 
 import { isNighttime } from './displayConfig'
+import { getEffectiveBackendUrl } from './backendUrl'
 
 export interface RoomConfig {
   roomId: string
@@ -120,7 +121,7 @@ async function muteRoomSpeaker(): Promise<void> {
       return
     }
 
-    const response = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/mute`, {
+    const response = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/mute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mute: true })
@@ -151,7 +152,7 @@ async function unmuteRoomSpeaker(): Promise<void> {
       return
     }
 
-    const response = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/mute`, {
+    const response = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/mute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mute: false })
@@ -177,7 +178,7 @@ async function tryLocalGpioMute(mute: boolean): Promise<boolean> {
   if (!roomConfig) return false
 
   try {
-    const statusRes = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/status`)
+    const statusRes = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/status`)
     if (!statusRes.ok) return false
     const status = await statusRes.json()
     const pins = status.pins as number[] | undefined
@@ -309,7 +310,7 @@ export async function resetForDaytime(): Promise<void> {
     roomId: roomConfig.roomId,
     roomName: roomConfig.roomName,
     units: undefined // Empty units = play all alerts
-  }, backendUrl)
+  }, getEffectiveBackendUrl())
 }
 
 /**
