@@ -12,6 +12,7 @@ import { initializeDisplayConfig, shouldDimDashboard, isNightModeEnabled, isNigh
 import { dimDashboard, brightenDashboard } from './utils/brightnessControl'
 import { initializeAmplifier, muteAmplifier, unmuteAmplifier, cleanupAmplifier, isAmplifierAvailable, isAmplifierMuted } from './utils/amplifierController'
 import { initializeRoomSpeaker, setUnitMapping, handleRoomAlert, handleRoomAlertComplete, shouldPlayAlertInRoom, resetForDaytime } from './utils/roomSpeakerController'
+import { getEffectiveBackendUrl } from './utils/backendUrl'
 
 interface Alert {
   id: number
@@ -41,11 +42,7 @@ function App() {
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const env = (import.meta as any).env as Record<string, string | undefined>
-    // Use env, then localStorage, then current page origin (so one build works from Pi or PC by IP)
-    const backendUrl =
-      (import.meta as any).env?.VITE_BACKEND_URL ||
-      (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
-      'http://localhost:3000'
+    const backendUrl = getEffectiveBackendUrl()
     
     // Initialize amplifier controller if configured
     const amplifierType = env.VITE_AMPLIFIER_TYPE || localStorage.getItem('amplifierType')
