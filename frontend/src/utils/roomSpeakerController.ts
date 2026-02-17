@@ -17,7 +17,6 @@ export interface RoomConfig {
 // Global state
 let roomConfig: RoomConfig | null = null
 let isQuietMode = false
-let backendUrl = 'http://localhost:3000'
 let unitMapping: Record<string, string> = {} // CAD code -> display name (e.g. ENG2 -> Engine 2)
 
 /** Local room GPIO service (per-room Pi). Frontend tries this first for mute/unmute. */
@@ -33,12 +32,10 @@ export function setUnitMapping(mapping: Record<string, string>): void {
 /**
  * Initialize room speaker controller
  */
-export function initializeRoomSpeaker(config: RoomConfig, apiBackendUrl?: string): void {
+export function initializeRoomSpeaker(config: RoomConfig, _apiBackendUrl?: string): void {
   roomConfig = config
-  if (apiBackendUrl) {
-    backendUrl = apiBackendUrl
-  }
-  
+  // API URL is resolved at request time via getEffectiveBackendUrl()
+
   // Load quiet mode from localStorage
   const savedQuietMode = localStorage.getItem(`quietMode_${config.roomId}`)
   if (savedQuietMode === 'true') {
