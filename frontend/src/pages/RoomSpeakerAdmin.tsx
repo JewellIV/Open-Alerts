@@ -8,6 +8,7 @@ import {
   setUnitMapping
 } from '../utils/roomSpeakerController'
 import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin, clearAdminSession } from '../utils/adminAuth'
+import { filterToStationUnits } from '../config/stationUnitsFilter'
 
 interface RoomSpeakerStatus {
   roomId: string
@@ -55,7 +56,7 @@ function RoomSpeakerAdmin() {
           setUnitMapping(data.unit_mapping)
         }
         const unitNames = (data.units || []).map((u: { unit_name: string }) => u.unit_name)
-        setAvailableUnits(unitNames)
+        setAvailableUnits(filterToStationUnits(unitNames))
       } else {
         const errorText = await response.text()
         console.error('Failed to fetch units:', response.status, errorText)

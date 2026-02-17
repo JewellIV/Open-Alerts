@@ -770,7 +770,7 @@ When each room has its **own Pi and 8-channel relay** (speaker wire stays short 
    ```bash
    cd /home/mvfdadmin/room-gpio-service
    npm install
-   export ROOM_PINS=4,5,6,7,8,9,10,11   # GPIO pins for this room's relay
+   export ROOM_PINS=4,5,6,7,8,9,21,22   # GPIO pins for this room's relay
    export GPIO_PORT=4000
    npm start
    ```

@@ -4,6 +4,7 @@ import ScrollingNotices from './ScrollingNotices'
 import { initializeAudio } from '../utils/soundAlerts'
 import { initializeSpeech, isSpeechSupported } from '../utils/speechManager'
 import { isQuietModeEnabled, enableQuietMode, disableQuietMode, getRoomConfig, initializeRoomSpeaker, setUnitMapping } from '../utils/roomSpeakerController'
+import { filterToStationUnits } from '../config/stationUnitsFilter'
 
 interface IdleScreenProps {
   isConnected: boolean
@@ -133,11 +134,9 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
           setUnitMapping(data.unit_mapping)
         }
         const unitNames = (data.units || []).map((u: { unit_name: string }) => u.unit_name)
-        console.log('Parsed unit names:', unitNames)
-
-        // Only show units that actually exist in the backend.
-        // If there are none, leave the list empty instead of using a generic fallback.
-        setAvailableUnits(unitNames)
+        const filtered = filterToStationUnits(unitNames)
+        console.log('Parsed unit names:', unitNames, 'filtered to station units:', filtered)
+        setAvailableUnits(filtered)
       } else {
         const errorText = await response.text()
         console.error('Failed to fetch units from backend:', response.status, errorText)

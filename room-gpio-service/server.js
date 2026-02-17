@@ -5,7 +5,7 @@
  * Central OpenAlerts backend (engine bay Pi) owns the single .db for alerts/notices/units.
  *
  * Env:
- *   ROOM_PINS   - Comma-separated GPIO BCM numbers (e.g. "4,5,6,7,8,9,10,11")
+ *   ROOM_PINS   - Comma-separated GPIO BCM numbers (e.g. "4,5,6,7,8,9,21,22")
  *   GPIO_PORT   - Port to listen on (default 4000)
  *   RELAY_ACTIVE_HIGH - Set to "1" if relay is on when pin is high (default 0 = low = relay on)
  *   USE_PYTHON_GPIO - Set to "1" to use Python gpiozero (for Pi 5 / Bookworm when onoff fails)
@@ -20,7 +20,7 @@ app.use(express.json());
 
 const ROOM_PINS = process.env.ROOM_PINS
   ? process.env.ROOM_PINS.split(',').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n))
-  : [4, 5, 6, 7, 8, 9, 10, 11];
+  : [4, 5, 6, 7, 8, 9, 21, 22];
 
 const PORT = process.env.GPIO_PORT ? parseInt(process.env.GPIO_PORT, 10) : 4000;
 const RELAY_ACTIVE_HIGH = process.env.RELAY_ACTIVE_HIGH === '1';
