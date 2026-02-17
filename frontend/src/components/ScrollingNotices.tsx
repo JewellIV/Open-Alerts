@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSocket } from '../utils/socket'
+import { getEffectiveBackendUrl } from '../utils/backendUrl'
 
 interface Notice {
   id: number
@@ -23,10 +24,7 @@ function ScrollingNotices({ notices: propNotices }: ScrollingNoticesProps) {
   useEffect(() => {
     // Get backend URL from environment or localStorage
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const backendUrl =
-      (import.meta as any).env?.VITE_BACKEND_URL ||
-      (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
-      'http://localhost:3000'
+    const backendUrl = getEffectiveBackendUrl()
     
     // Fetch notices from API
     const fetchNotices = async () => {

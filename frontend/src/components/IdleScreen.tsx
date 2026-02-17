@@ -5,6 +5,7 @@ import { initializeAudio } from '../utils/soundAlerts'
 import { initializeSpeech, isSpeechSupported } from '../utils/speechManager'
 import { isQuietModeEnabled, enableQuietMode, disableQuietMode, getRoomConfig, initializeRoomSpeaker, setUnitMapping } from '../utils/roomSpeakerController'
 import { filterToStationUnits } from '../config/stationUnitsFilter'
+import { getEffectiveBackendUrl } from '../utils/backendUrl'
 
 interface IdleScreenProps {
   isConnected: boolean
@@ -65,10 +66,7 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
       const fetchRoomAssignment = async () => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const backendUrl =
-            (import.meta as any).env?.VITE_BACKEND_URL ||
-            (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
-            'http://localhost:3000'
+          const backendUrl = getEffectiveBackendUrl()
           const response = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/assign`)
           
           if (response.ok) {
@@ -119,11 +117,7 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
     
     setLoadingUnits(true)
     try {
-      const backendUrl =
-        (import.meta as any).env?.VITE_BACKEND_URL ||
-        (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
-        'http://localhost:3000'
-
+      const backendUrl = getEffectiveBackendUrl()
       console.log('Fetching units from:', `${backendUrl}/api/station-units`)
       const response = await fetch(`${backendUrl}/api/station-units`)
       
@@ -161,11 +155,7 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
   const handleSaveUnits = async () => {
     if (!roomConfig) return
     
-    const backendUrl =
-      (import.meta as any).env?.VITE_BACKEND_URL ||
-      (typeof window !== 'undefined' && (localStorage.getItem('backendUrl') || window.location.origin)) ||
-      'http://localhost:3000'
-
+    const backendUrl = getEffectiveBackendUrl()
     try {
       // Save to database
       const response = await fetch(`${backendUrl}/api/room-speaker/${roomConfig.roomId}/assign`, {
