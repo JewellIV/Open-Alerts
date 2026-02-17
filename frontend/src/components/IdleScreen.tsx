@@ -134,45 +134,18 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
         }
         const unitNames = (data.units || []).map((u: { unit_name: string }) => u.unit_name)
         console.log('Parsed unit names:', unitNames)
-        
-        if (unitNames.length > 0) {
-          setAvailableUnits(unitNames)
-        } else {
-          console.warn('No units found in database, using fallback')
-          // Use common units as fallback if database is empty
-          setAvailableUnits([
-            'Engine 1', 'Engine 2', 'Engine 3', 'Engine 4',
-            'Ladder 1', 'Ladder 2', 'Ladder 3',
-            'Medic 1', 'Medic 2', 'Medic 3', 'Medic 4',
-            'Chief', 'Deputy Chief', 'Battalion Chief',
-            'Rescue 1', 'Rescue 2', 'Squad 1', 'Squad 2',
-            'Tanker 1', 'Tanker 2', 'Brush 1', 'Brush 2'
-          ])
-        }
+
+        // Only show units that actually exist in the backend.
+        // If there are none, leave the list empty instead of using a generic fallback.
+        setAvailableUnits(unitNames)
       } else {
         const errorText = await response.text()
-        console.error('Failed to fetch units:', response.status, errorText)
-        // Use common units as fallback
-        setAvailableUnits([
-          'Engine 1', 'Engine 2', 'Engine 3', 'Engine 4',
-          'Ladder 1', 'Ladder 2', 'Ladder 3',
-          'Medic 1', 'Medic 2', 'Medic 3', 'Medic 4',
-          'Chief', 'Deputy Chief', 'Battalion Chief',
-          'Rescue 1', 'Rescue 2', 'Squad 1', 'Squad 2',
-          'Tanker 1', 'Tanker 2', 'Brush 1', 'Brush 2'
-        ])
+        console.error('Failed to fetch units from backend:', response.status, errorText)
+        setAvailableUnits([])
       }
     } catch (error) {
       console.error('Error fetching units:', error)
-      // Use common units as fallback
-      setAvailableUnits([
-        'Engine 1', 'Engine 2', 'Engine 3', 'Engine 4',
-        'Ladder 1', 'Ladder 2', 'Ladder 3',
-        'Medic 1', 'Medic 2', 'Medic 3', 'Medic 4',
-        'Chief', 'Deputy Chief', 'Battalion Chief',
-        'Rescue 1', 'Rescue 2', 'Squad 1', 'Squad 2',
-        'Tanker 1', 'Tanker 2', 'Brush 1', 'Brush 2'
-      ])
+      setAvailableUnits([])
     } finally {
       setLoadingUnits(false)
     }
