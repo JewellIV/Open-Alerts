@@ -8,9 +8,13 @@
  *   ROOM_PINS   - Comma-separated GPIO BCM numbers (e.g. "4,5,6,7,8,9,10,11")
  *   GPIO_PORT   - Port to listen on (default 4000)
  *   RELAY_ACTIVE_HIGH - Set to "1" if relay is on when pin is high (default 0 = low = relay on)
+ *   USE_PYTHON_GPIO - Set to "1" to use Python gpiozero (for Pi 5 / Bookworm when onoff fails)
  */
 
 const express = require('express');
+const { execSync } = require('child_process');
+const path = require('path');
+
 const app = express();
 app.use(express.json());
 
@@ -23,6 +27,8 @@ const RELAY_ACTIVE_HIGH = process.env.RELAY_ACTIVE_HIGH === '1';
 
 let Gpio;
 let relays = new Map();
+let usePythonGpio = process.env.USE_PYTHON_GPIO === '1';
+const gpioWriteScript = path.join(__dirname, 'gpio_write.py');
 
 try {
   Gpio = require('onoff').Gpio;
@@ -30,31 +36,49 @@ try {
   console.warn('⚠️ onoff not available (not on Pi?). GPIO disabled.');
 }
 
-if (Gpio && process.platform === 'linux') {
+if (Gpio && process.platform === 'linux' && !usePythonGpio) {
   ROOM_PINS.forEach((pin) => {
     try {
       const r = new Gpio(pin, 'out');
       relays.set(pin, r);
-      console.log(`✅ Relay GPIO ${pin} opened`);
+      console.log(`✅ Relay GPIO ${pin} opened (onoff)`);
     } catch (err) {
       console.warn(`⚠️ GPIO ${pin}: ${err.message}`);
     }
   });
-} else if (Gpio) {
+  if (relays.size === 0 && ROOM_PINS.length > 0) {
+    console.warn('⚠️ onoff failed for all pins; falling back to Python gpiozero (Pi 5 / Bookworm).');
+    usePythonGpio = true;
+  }
+} else if (Gpio && !usePythonGpio) {
   console.warn('⚠️ Not Linux - GPIO not initialized');
 }
 
+if (usePythonGpio && process.platform === 'linux') {
+  console.log('📌 Using Python gpiozero for GPIO (set USE_PYTHON_GPIO=1 or auto fallback).');
+}
+
 function writePin(pin, mute) {
+  const value = RELAY_ACTIVE_HIGH ? (mute ? 1 : 0) : (mute ? 0 : 1);
+  if (usePythonGpio) {
+    try {
+      execSync(`python3 "${gpioWriteScript}" ${pin} ${value}`, { stdio: 'pipe', timeout: 2000 });
+      return true;
+    } catch (err) {
+      console.warn(`GPIO ${pin} write error (python):`, err.message);
+      return false;
+    }
+  }
   const relay = relays.get(pin);
   if (!relay) return false;
   try {
-    // mute = relay energized. RELAY_ACTIVE_HIGH=1 means high = on.
-    const value = RELAY_ACTIVE_HIGH ? (mute ? 1 : 0) : (mute ? 0 : 1);
     relay.writeSync(value);
     return true;
   } catch (err) {
-    console.warn(`GPIO ${pin} write error:`, err.message);
-    return false;
+    console.warn(`GPIO ${pin} write error (onoff):`, err.message);
+    usePythonGpio = true;
+    console.warn('⚠️ Switching to Python gpiozero for GPIO.');
+    return writePin(pin, mute);
   }
 }
 
@@ -77,11 +101,17 @@ app.post('/gpio/mute', (req, res) => {
 // GET /gpio/status
 app.get('/gpio/status', (_req, res) => {
   const status = [];
-  for (const [pin, relay] of relays.entries()) {
+  const pinList = usePythonGpio ? ROOM_PINS : Array.from(relays.keys());
+  for (const pin of pinList) {
     let value = -1;
-    try {
-      value = relay.readSync();
-    } catch (_) {}
+    if (!usePythonGpio) {
+      const relay = relays.get(pin);
+      if (relay) {
+        try {
+          value = relay.readSync();
+        } catch (_) {}
+      }
+    }
     status.push({ pin, value });
   }
   res.json({ success: true, pins: ROOM_PINS, status });
