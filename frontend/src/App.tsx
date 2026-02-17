@@ -36,6 +36,15 @@ function App() {
   const [isDimmed, setIsDimmed] = useState(false)
   const previousNighttimeRef = useRef<boolean | null>(null)
 
+  // One-time fix: clear stored backendUrl so API calls use current origin (fixes Private Network Access when opening from alerts.mangohickfire.com)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash === '#fix-backend') {
+      localStorage.removeItem('backendUrl')
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      window.location.reload()
+    }
+  }, [])
+
   // Initialize display configuration, amplifier, and room speaker
   useEffect(() => {
     initializeDisplayConfig()
