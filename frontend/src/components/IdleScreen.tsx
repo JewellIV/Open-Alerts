@@ -410,6 +410,12 @@ function IdleScreen({ isConnected, isReconnecting = false, onManualReconnect }: 
               <div className="text-center py-8 text-gray-400">Loading units...</div>
             ) : (
               <>
+                {availableUnits.length === 0 && (
+                  <div className="mb-4 p-4 bg-amber-900/50 border border-amber-700 rounded-lg text-amber-200 text-sm">
+                    <p className="font-semibold">No units loaded</p>
+                    <p className="mt-1">Set <strong>Backend URL</strong> to your central server (e.g. <code className="bg-black/30 px-1 rounded">http://alerts.mangohickfire.com:3000</code>) in Admin → Speakers, then reload this page.</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4 max-h-96 overflow-y-auto">
                   {availableUnits.map((unit) => (
                     <label
