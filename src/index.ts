@@ -1397,7 +1397,8 @@ const roomSpeakerConfigs: RoomSpeakerConfig[] = [];
 
 /**
  * Custom pin mapping for units
- * Each unit gets a unique pin, except Medic/Ambulance pairs share pins
+ * Each unit gets a unique pin, except Medic/Ambulance pairs share pins.
+ * Avoid SPI pins (7, 8, 9, 10, 11) when SPI is enabled on the Pi.
  */
 const UNIT_PIN_MAP: Record<string, number> = {
   // Medic/Ambulance pairs share pins
@@ -1406,13 +1407,13 @@ const UNIT_PIN_MAP: Record<string, number> = {
   'Medic 22': 22,
   'Ambulance 22': 22,
   
-  // All other units get unique pins
+  // All other units get unique pins (avoid 7,8,9,10,11 = SPI)
   'Engine 2': 4,
   'Tanker 2': 5,
   'Tanker 21': 6,
-  'Squad 2': 7,
-  'Brush 2': 8,
-  'Response 2': 9,
+  'Squad 2': 12,
+  'Brush 2': 13,
+  'Response 2': 16,
 };
 
 /**
@@ -1462,6 +1463,8 @@ function extractPinFromUnitName(unitName: string): number | null {
     if (pin === 23) pin = 24; // Skip radio pin
     if (pin === 2 || pin === 3) pin = unitNumber + 20; // Skip I2C pins
     if (pin === 14 || pin === 15) pin = unitNumber + 20; // Skip UART pins
+    // Skip SPI pins (7, 8, 9, 10, 11) when SPI is enabled on Pi
+    if (pin >= 7 && pin <= 11) pin = unitNumber + 12;
     
     // Ensure pin is in valid range
     if (pin > 0 && pin <= 27) {

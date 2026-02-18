@@ -20,7 +20,7 @@ app.use(express.json());
 
 const ROOM_PINS = process.env.ROOM_PINS
   ? process.env.ROOM_PINS.split(',').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n))
-  : [4, 5, 6, 7, 8, 9, 21, 22];
+  : [4, 5, 6, 12, 13, 16, 21, 22];
 
 const PORT = process.env.GPIO_PORT ? parseInt(process.env.GPIO_PORT, 10) : 4000;
 const RELAY_ACTIVE_HIGH = process.env.RELAY_ACTIVE_HIGH === '1';
@@ -75,6 +75,12 @@ if (usePythonGpio && process.platform === 'linux') {
     
     pythonManager.on('exit', (code) => {
       console.warn(`⚠️ GPIO Manager exited with code ${code}`);
+      process.pythonGpioManager = null;
+    });
+    
+    pythonManager.on('error', (err) => {
+      console.error(`❌ GPIO Manager error:`, err);
+      process.pythonGpioManager = null;
     });
     
     // Store reference to keep process alive
@@ -87,19 +93,33 @@ if (usePythonGpio && process.platform === 'linux') {
 
 function writePin(pin, mute) {
   const value = RELAY_ACTIVE_HIGH ? (mute ? 1 : 0) : (mute ? 0 : 1);
+  console.log(`🔌 Writing GPIO ${pin}: mute=${mute}, value=${value}, activeHigh=${RELAY_ACTIVE_HIGH}`);
+  
   if (usePythonGpio) {
     // Use Python GPIO manager if available (keeps devices open)
     if (process.pythonGpioManager && process.pythonGpioManager.stdin && !process.pythonGpioManager.stdin.destroyed) {
       try {
-        process.pythonGpioManager.stdin.write(`${pin} ${value}\n`);
+        const command = `${pin} ${value}\n`;
+        const written = process.pythonGpioManager.stdin.write(command);
+        if (!written) {
+          console.warn(`⚠️ GPIO ${pin} command buffer full, may not have been written`);
+        } else {
+          console.log(`✅ Sent GPIO ${pin} command: ${command.trim()}`);
+        }
+        // Flush to ensure it's sent immediately
+        process.pythonGpioManager.stdin.cork();
+        process.pythonGpioManager.stdin.uncork();
         return true;
       } catch (err) {
         console.warn(`GPIO ${pin} write error (manager):`, err.message);
       }
+    } else {
+      console.warn(`⚠️ GPIO Manager not available for pin ${pin}, using fallback`);
     }
     // Fallback to one-shot script
     try {
       execSync(`python3 "${gpioWriteScript}" ${pin} ${value}`, { stdio: 'pipe', timeout: 2000 });
+      console.log(`✅ GPIO ${pin} set via fallback script: ${value}`);
       return true;
     } catch (err) {
       console.warn(`GPIO ${pin} write error (python):`, err.message);
@@ -110,6 +130,7 @@ function writePin(pin, mute) {
   if (!relay) return false;
   try {
     relay.writeSync(value);
+    console.log(`✅ GPIO ${pin} set via onoff: ${value}`);
     return true;
   } catch (err) {
     console.warn(`GPIO ${pin} write error (onoff):`, err.message);

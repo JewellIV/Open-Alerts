@@ -6,8 +6,8 @@ After=network.target
 Type=simple
 User=mvfdadmin
 WorkingDirectory=/home/mvfdadmin/Open-Alerts/room-gpio-service
-# Set pins for this room (e.g. 8-channel relay: 4,5,6,7,8,9,21,22)
-Environment=ROOM_PINS=4,5,6,7,8,9,21,22
+# Set pins for this room (avoid SPI 7,8,9,10,11 - use 4,5,6,12,13,16,21,22)
+Environment=ROOM_PINS=4,5,6,12,13,16,21,22
 Environment=GPIO_PORT=4000
 ExecStart=/usr/bin/node server.js
 Restart=always

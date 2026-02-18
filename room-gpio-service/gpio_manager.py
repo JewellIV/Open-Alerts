@@ -6,8 +6,8 @@ Reads commands from stdin: "PIN VALUE" (e.g., "4 1" to set pin 4 to high).
 import sys
 import os
 
-# Get pins from environment
-ROOM_PINS = os.environ.get('ROOM_PINS', '4,5,6,7,8,9,21,22').split(',')
+# Get pins from environment (avoid SPI 7,8,9,10,11)
+ROOM_PINS = os.environ.get('ROOM_PINS', '4,5,6,12,13,16,21,22').split(',')
 ROOM_PINS = [int(p.strip()) for p in ROOM_PINS if p.strip().isdigit()]
 
 RELAY_ACTIVE_HIGH = os.environ.get('RELAY_ACTIVE_HIGH') == '1'
@@ -18,11 +18,17 @@ try:
     from gpiozero import DigitalOutputDevice
     
     # Initialize all devices and keep them open
+    # RELAY_ACTIVE_HIGH: "1" = relay ON when GPIO HIGH, "0" (default) = relay ON when GPIO LOW
+    # gpiozero active_high: True = device ON when HIGH, False = device ON when LOW
+    # So: RELAY_ACTIVE_HIGH="1" → gpiozero active_high=True
+    #     RELAY_ACTIVE_HIGH="0" → gpiozero active_high=False
+    active_high_setting = RELAY_ACTIVE_HIGH  # Use RELAY_ACTIVE_HIGH directly
     for pin in ROOM_PINS:
         try:
-            dev = DigitalOutputDevice(pin, initial_value=False, active_high=True)
+            # Start with all relays OFF (unmuted) - initial_value=False means OFF
+            dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
             devices[pin] = dev
-            print(f"✅ GPIO {pin} initialized", flush=True)
+            print(f"✅ GPIO {pin} initialized (active_high={active_high_setting}, RELAY_ACTIVE_HIGH={RELAY_ACTIVE_HIGH})", flush=True)
         except Exception as e:
             print(f"⚠️ GPIO {pin} init error: {e}", flush=True, file=sys.stderr)
     
@@ -44,8 +50,13 @@ try:
             
             if pin in devices and value in (0, 1):
                 # Server.js already applies RELAY_ACTIVE_HIGH logic, so use value as-is
-                devices[pin].value = bool(value)
-                print(f"✅ GPIO {pin} = {value}", flush=True)
+                try:
+                    old_value = devices[pin].value
+                    devices[pin].value = bool(value)
+                    new_value = devices[pin].value
+                    print(f"✅ GPIO {pin}: {old_value} → {new_value} (requested {value})", flush=True)
+                except Exception as e:
+                    print(f"❌ GPIO {pin} write error: {e}", flush=True, file=sys.stderr)
             else:
                 print(f"⚠️ Invalid pin {pin} or value {value}", flush=True, file=sys.stderr)
         except (ValueError, KeyError) as e:

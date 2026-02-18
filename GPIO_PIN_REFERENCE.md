@@ -21,17 +21,18 @@ The Raspberry Pi has a **40-pin GPIO header**, but not all pins are usable GPIO 
 ### Pins to Avoid:
 
 - **GPIO 2, 3** - I2C (SDA/SCL) - Used for I2C devices
+- **GPIO 7, 8, 9, 10, 11** - SPI (CE1, CE0, MISO, MOSI, SCLK) - Do **not** use for relays when SPI is enabled
 - **GPIO 14, 15** - UART (TX/RX) - Used for serial communication
 
 ### Your Unit Pin Assignments:
 
-Based on your units, you'll use:
+Based on your units (SPI pins 7,8,9 avoided):
 - **GPIO 4** - Engine 2 (unique)
 - **GPIO 5** - Tanker 2 (unique)
 - **GPIO 6** - Tanker 21 (unique)
-- **GPIO 7** - Squad 2 (unique)
-- **GPIO 8** - Brush 2 (unique)
-- **GPIO 9** - Response 2 (unique)
+- **GPIO 12** - Squad 2 (unique)
+- **GPIO 13** - Brush 2 (unique)
+- **GPIO 16** - Response 2 (unique)
 - **GPIO 21** - Medic 21, Ambulance 21 (shared - same physical unit)
 - **GPIO 22** - Medic 22, Ambulance 22 (shared - same physical unit)
 
@@ -39,9 +40,9 @@ Based on your units, you'll use:
 
 ## Available GPIO Pins (26 total):
 
-**Safe to Use:**
-- GPIO 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
-- GPIO 16, 17, 19, 20, 21, 22, 24, 25, 26, 27
+**Safe to Use (avoid SPI if enabled):**
+- GPIO 4, 5, 6, 12, 13, 16, 17, 19, 20, 21, 22, 24, 25, 26, 27
+- Avoid 7, 8, 9, 10, 11 when SPI is on
 - GPIO (BCM) numbering continues...
 
 **Already Used:**
@@ -49,7 +50,7 @@ Based on your units, you'll use:
 - GPIO 23 (Radio)
 
 **Your Units Will Use:**
-- GPIO 4, 5, 6, 7, 8, 9 (unique pins for each unit) ✅
+- GPIO 4, 5, 6, 12, 13, 16 (unique pins; 7,8,9 avoided for SPI) ✅
 - GPIO 21 (Medic 21/Ambulance 21 shared) ✅
 - GPIO 22 (Medic 22/Ambulance 22 shared) ✅
 
@@ -57,7 +58,7 @@ Based on your units, you'll use:
 
 1. **If you need I2C:** Avoid GPIO 2 and 3
 2. **For your units:** Consider remapping units to avoid GPIO 2, or disable I2C if not needed
-3. **Available pins for future expansion:** GPIO 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 19, 20, 24, 25, 26, 27
+3. **Available pins for future expansion:** GPIO 4, 5, 6, 12, 13, 16, 17, 19, 20, 24, 25, 26, 27 (avoid 7–11 if SPI enabled)
 
 ## Physical Pin Numbers vs GPIO Numbers:
 
@@ -73,7 +74,7 @@ Example:
 
 **Currently Needed:**
 - 2 pins (GPIO 18, 23) - Already reserved
-- 8 pins (GPIO 4, 5, 6, 7, 8, 9, 21, 22) - For your 10 units
+- 8 pins (GPIO 4, 5, 6, 12, 13, 16, 21, 22) - For your 10 units (7,8,9 not used; SPI)
 
 **Total Used: 10 pins**
 
