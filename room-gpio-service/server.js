@@ -12,7 +12,7 @@
  */
 
 const express = require('express');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const path = require('path');
 
 const app = express();
@@ -27,8 +27,10 @@ const RELAY_ACTIVE_HIGH = process.env.RELAY_ACTIVE_HIGH === '1';
 
 let Gpio;
 let relays = new Map();
+let pythonRelays = new Map(); // For gpiozero devices kept open
 let usePythonGpio = process.env.USE_PYTHON_GPIO === '1';
 const gpioWriteScript = path.join(__dirname, 'gpio_write.py');
+const gpioManagerScript = path.join(__dirname, 'gpio_manager.py');
 
 try {
   Gpio = require('onoff').Gpio;
@@ -56,11 +58,46 @@ if (Gpio && process.platform === 'linux' && !usePythonGpio) {
 
 if (usePythonGpio && process.platform === 'linux') {
   console.log('📌 Using Python gpiozero for GPIO (set USE_PYTHON_GPIO=1 or auto fallback).');
+  // Initialize Python GPIO manager that keeps devices open
+  try {
+    const pythonManager = spawn('python3', [gpioManagerScript], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: false
+    });
+    
+    pythonManager.stdout.on('data', (data) => {
+      console.log(`[GPIO Manager] ${data.toString().trim()}`);
+    });
+    
+    pythonManager.stderr.on('data', (data) => {
+      console.warn(`[GPIO Manager] ${data.toString().trim()}`);
+    });
+    
+    pythonManager.on('exit', (code) => {
+      console.warn(`⚠️ GPIO Manager exited with code ${code}`);
+    });
+    
+    // Store reference to keep process alive
+    process.pythonGpioManager = pythonManager;
+    console.log('✅ Python GPIO manager started');
+  } catch (err) {
+    console.warn('⚠️ Could not start Python GPIO manager:', err.message);
+  }
 }
 
 function writePin(pin, mute) {
   const value = RELAY_ACTIVE_HIGH ? (mute ? 1 : 0) : (mute ? 0 : 1);
   if (usePythonGpio) {
+    // Use Python GPIO manager if available (keeps devices open)
+    if (process.pythonGpioManager && process.pythonGpioManager.stdin && !process.pythonGpioManager.stdin.destroyed) {
+      try {
+        process.pythonGpioManager.stdin.write(`${pin} ${value}\n`);
+        return true;
+      } catch (err) {
+        console.warn(`GPIO ${pin} write error (manager):`, err.message);
+      }
+    }
+    // Fallback to one-shot script
     try {
       execSync(`python3 "${gpioWriteScript}" ${pin} ${value}`, { stdio: 'pipe', timeout: 2000 });
       return true;

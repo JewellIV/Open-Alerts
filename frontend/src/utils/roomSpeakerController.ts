@@ -18,6 +18,7 @@ export interface RoomConfig {
 let roomConfig: RoomConfig | null = null
 let isQuietMode = false
 let unitMapping: Record<string, string> = {} // CAD code -> display name (e.g. ENG2 -> Engine 2)
+let currentAlertPins: number[] = [] // Pins currently unmuted for active alert
 
 /** Local room GPIO service (per-room Pi). Frontend tries this first for mute/unmute. */
 const LOCAL_GPIO_URL = 'http://localhost:4000'
@@ -167,30 +168,83 @@ async function unmuteRoomSpeaker(): Promise<void> {
 }
 
 /**
+ * Get pins for specific units from backend status
+ */
+async function getPinsForUnits(units: string[]): Promise<number[]> {
+  if (!roomConfig || !units || units.length === 0) return []
+  
+  try {
+    const statusRes = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/status`)
+    if (!statusRes.ok) return []
+    const status = await statusRes.json()
+    const unitPins = status.unitPins as Array<{ unit: string; pin: number; available: boolean }> | undefined
+    if (!unitPins) return []
+    
+    // Map alert units to pins (resolve CAD codes first)
+    const resolvedUnits = units.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
+    const pins: number[] = []
+    
+    for (const unitPin of unitPins) {
+      // Check if this unit matches any alert unit
+      const matches = resolvedUnits.some(alertUnit => 
+        unitPin.unit.toLowerCase().includes(alertUnit.toLowerCase()) ||
+        alertUnit.toLowerCase().includes(unitPin.unit.toLowerCase())
+      )
+      if (matches && unitPin.available && !pins.includes(unitPin.pin)) {
+        pins.push(unitPin.pin)
+      }
+    }
+    
+    return pins
+  } catch (error) {
+    console.warn('Error getting pins for units:', error)
+    return []
+  }
+}
+
+/**
  * Try to mute/unmute via local room GPIO service (room Pi).
  * Gets pin list from central backend for this room, then POSTs to localhost:4000.
  * Returns true if local GPIO was used, false to fall back to central backend.
  */
-async function tryLocalGpioMute(mute: boolean): Promise<boolean> {
+async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean> {
   if (!roomConfig) return false
 
   try {
-    const statusRes = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/status`)
-    if (!statusRes.ok) return false
-    const status = await statusRes.json()
-    const pins = status.pins as number[] | undefined
-    if (!pins || pins.length === 0) return false
+    // If pins not provided, get all pins for the room
+    let targetPins = pins
+    if (!targetPins || targetPins.length === 0) {
+      const statusRes = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/status`)
+      if (!statusRes.ok) return false
+      const status = await statusRes.json()
+      targetPins = status.pins as number[] | undefined
+    }
+    
+    if (!targetPins || targetPins.length === 0) return false
 
     const gpioRes = await fetch(`${LOCAL_GPIO_URL}/gpio/mute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mute, pins })
+      body: JSON.stringify({ mute, pins: targetPins })
     })
     if (gpioRes.ok) return true
   } catch (_) {
     // Local GPIO service not running (e.g. on server Pi or dev machine)
   }
   return false
+}
+
+/**
+ * Try to mute/unmute specific units via local GPIO service.
+ * Only controls pins for the specified units.
+ */
+async function tryLocalGpioMuteForUnits(mute: boolean, units: string[]): Promise<boolean> {
+  if (!roomConfig || !units || units.length === 0) return false
+  
+  const pins = await getPinsForUnits(units)
+  if (pins.length === 0) return false
+  
+  return await tryLocalGpioMute(mute, pins)
 }
 
 /**
@@ -247,6 +301,81 @@ export function shouldPlayAlertInRoom(alertUnits: string): boolean {
 }
 
 /**
+ * Unmute room speaker for specific units only
+ */
+async function unmuteRoomSpeakerForUnits(units: string[]): Promise<void> {
+  if (!roomConfig || !units || units.length === 0) return
+
+  try {
+    const pins = await getPinsForUnits(units)
+    if (pins.length === 0) {
+      console.warn(`No pins found for units: ${units.join(', ')}`)
+      return
+    }
+    
+    // Store pins for this alert
+    currentAlertPins = pins
+    
+    const usedLocal = await tryLocalGpioMute(false, pins)
+    if (usedLocal) {
+      console.log(`🔊 Room speaker unmuted (local GPIO) for units ${units.join(', ')}: pins [${pins.join(', ')}]`)
+      return
+    }
+
+    // Fallback to central backend - need to send units, not just mute all
+    // For now, unmute all pins (backend doesn't support unit-specific mute yet)
+    const response = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/mute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mute: false })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.warn(`Backend unmute failed (${response.status}): ${errorText}`)
+      return
+    }
+    console.log(`🔊 Room speaker unmuted (central) for units ${units.join(', ')}`)
+  } catch (error) {
+    console.warn('Error unmuting room speaker for units:', error)
+  }
+}
+
+/**
+ * Mute room speaker for specific units only
+ */
+async function muteRoomSpeakerForUnits(units: string[]): Promise<void> {
+  if (!roomConfig || !units || units.length === 0) return
+
+  try {
+    const pins = await getPinsForUnits(units)
+    if (pins.length === 0) return
+    
+    const usedLocal = await tryLocalGpioMute(true, pins)
+    if (usedLocal) {
+      console.log(`🔇 Room speaker muted (local GPIO) for units ${units.join(', ')}: pins [${pins.join(', ')}]`)
+      return
+    }
+
+    // Fallback to central backend
+    const response = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/mute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mute: true })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.warn(`Backend mute failed (${response.status}): ${errorText}`)
+      return
+    }
+    console.log(`🔇 Room speaker muted (central) for units ${units.join(', ')}`)
+  } catch (error) {
+    console.warn('Error muting room speaker for units:', error)
+  }
+}
+
+/**
  * Handle alert for this room
  * Returns true if alert should play, false if muted/quiet mode
  */
@@ -265,8 +394,15 @@ export async function handleRoomAlert(alertUnits: string, _isNighttime: boolean)
     return false
   }
   
-  // Unmute speaker for alert
-  await unmuteRoomSpeaker()
+  // Parse alert units and unmute only those pins
+  const alertUnitList = alertUnits.split(',').map(u => u.trim()).filter(u => u)
+  if (alertUnitList.length > 0) {
+    // Unmute only pins for these specific units
+    await unmuteRoomSpeakerForUnits(alertUnitList)
+  } else {
+    // No specific units - unmute all (station-wide alert)
+    await unmuteRoomSpeaker()
+  }
   
   return true
 }
@@ -277,8 +413,23 @@ export async function handleRoomAlert(alertUnits: string, _isNighttime: boolean)
 export async function handleRoomAlertComplete(): Promise<void> {
   if (!roomConfig) return
   
-  // If nighttime, mute again after alert
-  if (isNighttime()) {
+  // If we have pins from the current alert, mute only those
+  if (currentAlertPins.length > 0) {
+    setTimeout(() => {
+      // Mute the pins that were unmuted for this alert
+      tryLocalGpioMute(true, currentAlertPins).then(usedLocal => {
+        if (usedLocal) {
+          console.log(`🌙 Alert complete - muted pins [${currentAlertPins.join(', ')}] (local GPIO)`)
+        } else {
+          // Fallback to muting all
+          muteRoomSpeaker()
+          console.log(`🌙 Alert complete - room speaker muted (central)`)
+        }
+        currentAlertPins = []
+      })
+    }, 2000)
+  } else if (isNighttime()) {
+    // No specific pins tracked - mute all (nighttime behavior)
     setTimeout(() => {
       muteRoomSpeaker()
       console.log(`🌙 Alert complete - room speaker muted (nighttime)`)
