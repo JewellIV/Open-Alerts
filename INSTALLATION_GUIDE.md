@@ -782,7 +782,15 @@ When each room has its **own Pi and 8-channel relay** (speaker wire stays short 
    sudo systemctl enable room-gpio-service
    sudo systemctl start room-gpio-service
    ```
-4. On that room’s **display**, set **Backend URL** to the central server (e.g. `http://alerts.mangohickfire.com:3000`). Quiet mode and mute will control **local** relays via `http://localhost:4000` automatically.
+4. On that room’s **display**, set **Backend URL** to the central server (e.g. `http://alerts.mangohickfire.com:3000`). If the app is loaded from that URL (not from the room Pi’s own host), the browser may block requests to `localhost:4000` (Chrome Private Network Access). In that case, configure the **central server** to proxy mute to the room Pi:
+
+   On the **engine bay / central server**, set:
+   ```bash
+   ROOM_GPIO_URLS=mens_bunk:http://192.168.68.140:4000
+   ```
+   (Use the room Pi’s IP and add more `roomId:url` entries comma-separated if needed.) Restart the backend. Quiet mode and mute will then go through the backend to the room Pi’s GPIO service, and the relays will respond.
+
+   If the display loads the app from the room Pi itself (same host as localhost), local relay control via `http://localhost:4000` can work without this.
 
 See `room-gpio-service/README.md` for API and env details.
 
@@ -1007,7 +1015,7 @@ Save, then reboot. If you still see a black screen with cursor **before** the de
 **Per-room Pi (Room GPIO Service):**
 1. On the room Pi, ensure the room GPIO service is running: `curl http://localhost:4000/health`
 2. Check `ROOM_PINS` in the service match the unit pins for that room (from central `/api/room-speaker/:roomId/status`)
-3. On the display, Backend URL must point to the central server; mute/quiet mode will use localhost:4000 for relays automatically
+3. On the display, Backend URL must point to the central server. If the app is loaded from the central URL (e.g. `http://alerts.mangohickfire.com:3000`), Chrome blocks fetch to `localhost:4000` (Private Network Access). Set **ROOM_GPIO_URLS** on the central server (e.g. `mens_bunk:http://<room-pi-ip>:4000`) so the backend forwards mute/quiet to the room Pi.
 
 #### Lights Not Flashing
 

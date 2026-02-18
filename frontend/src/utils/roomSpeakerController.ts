@@ -113,6 +113,7 @@ async function muteRoomSpeaker(): Promise<void> {
   if (!roomConfig) return
 
   try {
+    console.log(`🔇 Room speaker: attempting local GPIO mute at ${LOCAL_GPIO_URL}...`)
     const usedLocal = await tryLocalGpioMute(true)
     if (usedLocal) {
       console.log(`🔇 Room speaker muted (local GPIO): ${roomConfig.roomName}`)
@@ -144,6 +145,7 @@ async function unmuteRoomSpeaker(): Promise<void> {
   if (!roomConfig) return
 
   try {
+    console.log(`🔊 Room speaker: attempting local GPIO unmute at ${LOCAL_GPIO_URL}...`)
     const usedLocal = await tryLocalGpioMute(false)
     if (usedLocal) {
       console.log(`🔊 Room speaker unmuted (local GPIO): ${roomConfig.roomName}`)
@@ -210,25 +212,28 @@ async function getPinsForUnits(units: string[]): Promise<number[]> {
 async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean> {
   if (!roomConfig) return false
 
-  try {
-    let body: { mute: boolean; pins?: number[] }
-    if (pins && pins.length > 0) {
-      body = { mute, pins }
-    } else {
-      // Quiet mode or no pins: tell local service to mute/unmute ALL pins on this device (ROOM_PINS)
-      body = { mute }
-    }
+  const body: { mute: boolean; pins?: number[] } =
+    pins && pins.length > 0 ? { mute, pins } : { mute }
 
-    const gpioRes = await fetch(`${LOCAL_GPIO_URL}/gpio/mute`, {
+  try {
+    const url = `${LOCAL_GPIO_URL}/gpio/mute`
+    const gpioRes = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-    if (gpioRes.ok) return true
+    if (gpioRes.ok) {
+      return true
+    }
     const errText = await gpioRes.text()
     console.warn(`Room GPIO local mute failed (${gpioRes.status}): ${errText}`)
   } catch (e) {
-    console.warn('Room GPIO local request failed (is room-gpio-service running on this Pi on port 4000?):', e)
+    const msg = e instanceof Error ? e.message : String(e)
+    console.warn(
+      `Room GPIO: request to ${LOCAL_GPIO_URL} failed. ` +
+        `Ensure room-gpio-service is running on THIS device (port 4000) and browser is on the room Pi. ` +
+        `Error: ${msg}`
+    )
   }
   return false
 }

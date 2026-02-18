@@ -1390,6 +1390,8 @@ interface RoomSpeakerConfig {
   roomId: string
   roomName: string
   units?: string[] // Units assigned to this room (e.g., ["Engine 1", "Ladder 2"])
+  /** When set, backend forwards mute requests to this room Pi's GPIO service (avoids browser PNA block from HTTP page to localhost). */
+  gpioServiceUrl?: string
 }
 
 // Load room speaker configuration from environment
@@ -1571,6 +1573,25 @@ try {
   console.warn('⚠️ Could not load room speakers from database:', error);
 }
 
+// Optional: per-room GPIO service URL so backend can forward mute to room Pi (avoids browser PNA block when page is HTTP).
+// Format: ROOM_GPIO_URLS=mens_bunk:http://192.168.68.140:4000,other_room:http://192.168.68.141:4000
+const roomGpioUrlsEnv = process.env.ROOM_GPIO_URLS;
+if (roomGpioUrlsEnv) {
+  const entries = roomGpioUrlsEnv.split(',').map(s => s.trim()).filter(Boolean);
+  for (const entry of entries) {
+    const idx = entry.indexOf(':');
+    if (idx > 0) {
+      const roomId = entry.slice(0, idx).trim();
+      const url = entry.slice(idx + 1).trim().replace(/\/+$/, '');
+      const room = roomSpeakerConfigs.find(r => r.roomId === roomId);
+      if (room) {
+        (room as RoomSpeakerConfig).gpioServiceUrl = url;
+        console.log(`🔌 Room "${roomId}" GPIO proxy: ${url}`);
+      }
+    }
+  }
+}
+
 // Also load units from station_units database to build pin mappings
 try {
   const stmt = db.prepare('SELECT unit_name FROM station_units WHERE is_active = 1');
@@ -1749,10 +1770,10 @@ app.post('/api/unit-speaker/mute', validateAdminSession, (req: Request, res: Res
 
 // Room speaker control endpoints (for per-room relay control - now uses unit pins)
 // Public endpoint - room displays need to control their own speakers without admin login
-app.post('/api/room-speaker/:roomId/mute', (req: Request, res: Response) => {
+app.post('/api/room-speaker/:roomId/mute', async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
-    const { mute } = req.body;
+    const { mute, pins } = req.body;
     
     const roomConfig = roomSpeakerConfigs.find(r => r.roomId === roomId);
     if (!roomConfig) {
@@ -1760,6 +1781,36 @@ app.post('/api/room-speaker/:roomId/mute', (req: Request, res: Response) => {
         error: 'Room not found',
         message: `Room not configured: ${roomId}`,
         availableRooms: roomSpeakerConfigs.map(r => r.roomId)
+      });
+    }
+
+    // If this room has a GPIO service URL (room Pi), forward mute there so browser PNA is not involved
+    if (roomConfig.gpioServiceUrl) {
+      const url = `${roomConfig.gpioServiceUrl.replace(/\/+$/, '')}/gpio/mute`;
+      const body: { mute: boolean; pins?: number[] } = typeof mute === 'boolean' ? { mute } : { mute: !!mute };
+      if (Array.isArray(pins) && pins.length > 0) body.pins = pins;
+      const fwd = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!fwd.ok) {
+        const errText = await fwd.text();
+        console.warn(`Room GPIO proxy ${roomId} failed (${fwd.status}): ${errText}`);
+        return res.status(502).json({
+          error: 'Room GPIO proxy failed',
+          message: errText || `Upstream returned ${fwd.status}`
+        });
+      }
+      const data = (await fwd.json().catch(() => ({}))) as { pins?: number[] };
+      console.log(`🔊 Room speaker ${mute ? 'muted' : 'unmuted'} (proxy): ${roomConfig.roomName}`);
+      return res.json({
+        success: true,
+        muted: mute,
+        roomId,
+        roomName: roomConfig.roomName,
+        controlledPins: data.pins,
+        message: `Room speaker ${mute ? 'muted' : 'unmuted'} successfully`
       });
     }
     
@@ -1773,7 +1824,7 @@ app.post('/api/room-speaker/:roomId/mute', (req: Request, res: Response) => {
       });
     }
     
-    // Control all unit pins for this room
+    // Control all unit pins for this room (local relays on this server)
     const controlledPins = new Set<number>();
     for (const unitName of roomConfig.units) {
       const pin = getPinForUnit(unitName);

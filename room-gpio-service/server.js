@@ -18,11 +18,14 @@ const path = require('path');
 const app = express();
 app.use(express.json());
 
-// CORS: allow frontend (served from engine-bay or same host) to call this service from the room Pi's browser
+// CORS + Private Network Access (PNA): page at http://alerts.mangohickfire.com:3000 is "less private" than localhost,
+// so Chrome blocks fetch to localhost:4000 unless we respond to the preflight with the actual Origin (not *) and Allow-Private-Network.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
