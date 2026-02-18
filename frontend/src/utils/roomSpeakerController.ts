@@ -313,12 +313,11 @@ async function unmuteRoomSpeakerForUnits(units: string[]): Promise<void> {
       return
     }
 
-    // Fallback to central backend - need to send units, not just mute all
-    // For now, unmute all pins (backend doesn't support unit-specific mute yet)
+    // Fallback to central backend (e.g. when local GPIO blocked by PNA) - send pins so backend proxy can forward unit-specific unmute
     const response = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/mute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mute: false })
+      body: JSON.stringify({ mute: false, pins })
     })
 
     if (!response.ok) {
@@ -326,7 +325,7 @@ async function unmuteRoomSpeakerForUnits(units: string[]): Promise<void> {
       console.warn(`Backend unmute failed (${response.status}): ${errorText}`)
       return
     }
-    console.log(`🔊 Room speaker unmuted (central) for units ${units.join(', ')}`)
+    console.log(`🔊 Room speaker unmuted (central) for units ${units.join(', ')}: pins [${pins.join(', ')}]`)
   } catch (error) {
     console.warn('Error unmuting room speaker for units:', error)
   }

@@ -1875,15 +1875,27 @@ app.get('/api/room-speaker/:roomId/status', (req: Request, res: Response) => {
             if (!pins.includes(pin)) {
               pins.push(pin);
             }
+            // For rooms with gpioServiceUrl, relays are on the room Pi so pin is "available" for unmute even though we have no local relay here
+            const available = !!roomConfig.gpioServiceUrl || unitSpeakerRelays.has(pin);
             unitPins.push({
               unit: unitName,
               pin,
-              available: unitSpeakerRelays.has(pin)
+              available
             });
           }
         }
       }
-      
+      // When room has its own GPIO service (room Pi), include all known unit->pin mappings so any alert unit (e.g. Engine 2) can unmute the right channel
+      if (roomConfig.gpioServiceUrl && unitToPinMap.size > 0) {
+        const existingUnits = new Set(unitPins.map((u) => u.unit.toLowerCase()));
+        for (const [unitName, pin] of unitToPinMap.entries()) {
+          if (existingUnits.has(unitName.toLowerCase())) continue;
+          if (!pins.includes(pin)) pins.push(pin);
+          unitPins.push({ unit: unitName, pin, available: true });
+          existingUnits.add(unitName.toLowerCase());
+        }
+      }
+
       res.json({ 
         success: true,
         roomId,
@@ -1891,7 +1903,7 @@ app.get('/api/room-speaker/:roomId/status', (req: Request, res: Response) => {
         units: roomConfig.units || [],
         unitPins,
         pins,
-        available: pins.length > 0 && pins.some(pin => unitSpeakerRelays.has(pin)),
+        available: pins.length > 0 && (!!roomConfig.gpioServiceUrl || pins.some(pin => unitSpeakerRelays.has(pin))),
         message: 'Room speaker configuration available'
       });
     } else {
