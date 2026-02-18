@@ -6,8 +6,8 @@ Reads commands from stdin: "PIN VALUE" (e.g., "4 1" to set pin 4 to high).
 import sys
 import os
 
-# Get pins from environment (avoid SPI 7,8,9,10,11)
-ROOM_PINS = os.environ.get('ROOM_PINS', '4,5,6,12,13,16,21,22').split(',')
+# Get pins from environment (avoid SPI 7,8,9,10,11; use 24 not 22 if GPIO 22 doesn't turn on)
+ROOM_PINS = os.environ.get('ROOM_PINS', '4,5,6,12,13,16,21,24').split(',')
 ROOM_PINS = [int(p.strip()) for p in ROOM_PINS if p.strip().isdigit()]
 
 RELAY_ACTIVE_HIGH = os.environ.get('RELAY_ACTIVE_HIGH') == '1'
@@ -28,11 +28,31 @@ try:
             # Start with all relays OFF (unmuted) - initial_value=False means OFF
             dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
             devices[pin] = dev
-            print(f"✅ GPIO {pin} initialized (active_high={active_high_setting}, RELAY_ACTIVE_HIGH={RELAY_ACTIVE_HIGH})", flush=True)
+            # Drive pin firmly LOW so it's not floating (stops "dimly lit" LEDs)
+            dev.value = False
+            print(f"✅ GPIO {pin} initialized (active_high={active_high_setting})", flush=True)
         except Exception as e:
             print(f"⚠️ GPIO {pin} init error: {e}", flush=True, file=sys.stderr)
+            # Retry once (helps on Pi 5 where some pins need a second try)
+            if pin == 22:
+                try:
+                    import time
+                    time.sleep(0.2)
+                    dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
+                    devices[pin] = dev
+                    dev.value = False
+                    print(f"✅ GPIO {pin} initialized on retry", flush=True)
+                except Exception as e2:
+                    print(f"❌ GPIO 22 failed again: {e2}. Try remapping Medic 22/Ambulance 22 to GPIO 24 in backend.", flush=True, file=sys.stderr)
     
-    print(f"🚨 GPIO Manager ready for {len(devices)} pins", flush=True)
+    # Explicitly set every pin LOW again so none are left floating
+    for pin, dev in devices.items():
+        try:
+            dev.value = False
+        except Exception as e:
+            print(f"⚠️ GPIO {pin} set-off error: {e}", flush=True, file=sys.stderr)
+    
+    print(f"🚨 GPIO Manager ready for {len(devices)} pins (all driven LOW)", flush=True)
     
     # Read commands from stdin: "PIN VALUE"
     for line in sys.stdin:

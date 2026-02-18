@@ -20,7 +20,7 @@ app.use(express.json());
 
 const ROOM_PINS = process.env.ROOM_PINS
   ? process.env.ROOM_PINS.split(',').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n))
-  : [4, 5, 6, 12, 13, 16, 21, 22];
+  : [4, 5, 6, 12, 13, 16, 21, 24];
 
 const PORT = process.env.GPIO_PORT ? parseInt(process.env.GPIO_PORT, 10) : 4000;
 const RELAY_ACTIVE_HIGH = process.env.RELAY_ACTIVE_HIGH === '1';
@@ -86,6 +86,19 @@ if (usePythonGpio && process.platform === 'linux') {
     // Store reference to keep process alive
     process.pythonGpioManager = pythonManager;
     console.log('✅ Python GPIO manager started');
+    
+    // After a short delay, send "all pins OFF" so every pin is driven LOW (no floating = no dim LEDs)
+    setTimeout(() => {
+      if (process.pythonGpioManager && process.pythonGpioManager.stdin && !process.pythonGpioManager.stdin.destroyed) {
+        const offValue = RELAY_ACTIVE_HIGH ? 0 : 1; // 0 = relay off when active-low
+        ROOM_PINS.forEach((pin) => {
+          try {
+            process.pythonGpioManager.stdin.write(`${pin} ${offValue}\n`);
+          } catch (e) {}
+        });
+        console.log('🔌 Sent all pins OFF to GPIO manager');
+      }
+    }, 500);
   } catch (err) {
     console.warn('⚠️ Could not start Python GPIO manager:', err.message);
   }

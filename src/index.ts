@@ -1404,8 +1404,9 @@ const UNIT_PIN_MAP: Record<string, number> = {
   // Medic/Ambulance pairs share pins
   'Medic 21': 21,
   'Ambulance 21': 21,
-  'Medic 22': 22,
-  'Ambulance 22': 22,
+  // Medic 22/Ambulance 22: use GPIO 24 (22 can be unreliable on some Pi 5)
+  'Medic 22': 24,
+  'Ambulance 22': 24,
   
   // All other units get unique pins (avoid 7,8,9,10,11 = SPI)
   'Engine 2': 4,

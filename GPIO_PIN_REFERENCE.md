@@ -34,7 +34,7 @@ Based on your units (SPI pins 7,8,9 avoided):
 - **GPIO 13** - Brush 2 (unique)
 - **GPIO 16** - Response 2 (unique)
 - **GPIO 21** - Medic 21, Ambulance 21 (shared - same physical unit)
-- **GPIO 22** - Medic 22, Ambulance 22 (shared - same physical unit)
+- **GPIO 24** - Medic 22, Ambulance 22 (shared; GPIO 22 can be unreliable on some Pi 5)
 
 ✅ **Note:** Each unit gets a unique pin (except Medic/Ambulance pairs which share pins).
 
@@ -52,7 +52,7 @@ Based on your units (SPI pins 7,8,9 avoided):
 **Your Units Will Use:**
 - GPIO 4, 5, 6, 12, 13, 16 (unique pins; 7,8,9 avoided for SPI) ✅
 - GPIO 21 (Medic 21/Ambulance 21 shared) ✅
-- GPIO 22 (Medic 22/Ambulance 22 shared) ✅
+- GPIO 24 (Medic 22/Ambulance 22 shared; 22 can be unreliable on Pi 5) ✅
 
 ## Recommendations:
 
@@ -74,7 +74,7 @@ Example:
 
 **Currently Needed:**
 - 2 pins (GPIO 18, 23) - Already reserved
-- 8 pins (GPIO 4, 5, 6, 12, 13, 16, 21, 22) - For your 10 units (7,8,9 not used; SPI)
+- 8 pins (GPIO 4, 5, 6, 12, 13, 16, 21, 24) - For your 10 units (22→24 if GPIO 22 won’t turn on)
 
 **Total Used: 10 pins**
 
