@@ -235,19 +235,6 @@ async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean
 }
 
 /**
- * Try to mute/unmute specific units via local GPIO service.
- * Only controls pins for the specified units.
- */
-async function tryLocalGpioMuteForUnits(mute: boolean, units: string[]): Promise<boolean> {
-  if (!roomConfig || !units || units.length === 0) return false
-  
-  const pins = await getPinsForUnits(units)
-  if (pins.length === 0) return false
-  
-  return await tryLocalGpioMute(mute, pins)
-}
-
-/**
  * Check if alert should play in this room based on unit assignments
  * 
  * Rules:
@@ -338,40 +325,6 @@ async function unmuteRoomSpeakerForUnits(units: string[]): Promise<void> {
     console.log(`🔊 Room speaker unmuted (central) for units ${units.join(', ')}`)
   } catch (error) {
     console.warn('Error unmuting room speaker for units:', error)
-  }
-}
-
-/**
- * Mute room speaker for specific units only
- */
-async function muteRoomSpeakerForUnits(units: string[]): Promise<void> {
-  if (!roomConfig || !units || units.length === 0) return
-
-  try {
-    const pins = await getPinsForUnits(units)
-    if (pins.length === 0) return
-    
-    const usedLocal = await tryLocalGpioMute(true, pins)
-    if (usedLocal) {
-      console.log(`🔇 Room speaker muted (local GPIO) for units ${units.join(', ')}: pins [${pins.join(', ')}]`)
-      return
-    }
-
-    // Fallback to central backend
-    const response = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/mute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mute: true })
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.warn(`Backend mute failed (${response.status}): ${errorText}`)
-      return
-    }
-    console.log(`🔇 Room speaker muted (central) for units ${units.join(', ')}`)
-  } catch (error) {
-    console.warn('Error muting room speaker for units:', error)
   }
 }
 
