@@ -22,35 +22,56 @@ function isPrivateUrl(url: string): boolean {
 let _apiBaseLogged = false
 function logApiBaseOnce(url: string, note?: string): void {
   if (!_apiBaseLogged) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'N/A'
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('backendUrl') : null
     console.log('Using API base:', url, note ?? '')
+    console.log('  Origin:', origin, '| Stored:', stored, '| Origin is private:', typeof window !== 'undefined' ? isPrivateUrl(origin) : 'N/A')
     _apiBaseLogged = true
   }
 }
 
 export function getEffectiveBackendUrl(): string {
   if (typeof window === 'undefined') return 'http://localhost:3000'
+  
+  const origin = window.location.origin
+  if (!origin) {
+    const env = (import.meta as any)?.env?.VITE_BACKEND_URL as string | undefined
+    const fallback = env || 'http://localhost:3000'
+    logApiBaseOnce(fallback, env ? '(no origin, using VITE_BACKEND_URL)' : '(no origin available)')
+    return fallback
+  }
+  
+  // Check if origin is dev server
+  const isDev = origin.includes('5173') || origin.includes('localhost') || origin.includes('127.0.0.1')
+  
+  // Check if origin is private IP
+  const originIsPrivate = isPrivateUrl(origin)
+  
+  // CRITICAL: When loaded from a public origin (e.g. alerts.mangohickfire.com), 
+  // ALWAYS use it so API calls are same-origin and not blocked by Private Network Access.
+  // This must happen BEFORE checking env vars or localStorage.
+  if (!isDev && !originIsPrivate) {
+    logApiBaseOnce(origin, '(using public origin - forced)')
+    return origin
+  }
+  
+  // For dev/localhost, check env var first, then localStorage, then fallback
   const env = (import.meta as any)?.env?.VITE_BACKEND_URL as string | undefined
   if (env) {
-    logApiBaseOnce(env)
+    logApiBaseOnce(env, '(from VITE_BACKEND_URL env)')
     return env
   }
-  const origin = window.location.origin
-  // When loaded from a public origin (e.g. alerts.mangohickfire.com), always use it
-  // so API calls are same-origin and not blocked by Private Network Access.
-  if (origin && !origin.includes('5173') && !isPrivateUrl(origin)) {
-    logApiBaseOnce(origin)
-    return origin
-  }
+  
   const stored = localStorage.getItem('backendUrl')
   const candidate = stored || origin || 'http://localhost:3000'
-  if (!origin || origin.includes('5173')) {
-    logApiBaseOnce(candidate)
+  
+  // Dev server: use candidate (could be stored or localhost)
+  if (isDev) {
+    logApiBaseOnce(candidate, '(dev mode)')
     return candidate
   }
-  if (isPrivateUrl(candidate) && !isPrivateUrl(origin)) {
-    logApiBaseOnce(origin, '(overrode private stored URL)')
-    return origin
-  }
-  logApiBaseOnce(candidate)
+  
+  // If origin is private but we have a stored value, use stored (might be different private IP)
+  logApiBaseOnce(candidate, stored ? '(from localStorage)' : '(fallback)')
   return candidate
 }
