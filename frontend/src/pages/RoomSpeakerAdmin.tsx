@@ -9,6 +9,7 @@ import {
 } from '../utils/roomSpeakerController'
 import { loginAdmin, isAdminLoggedIn, getAdminHeaders, initializeAdminAuth, logoutAdmin, clearAdminSession } from '../utils/adminAuth'
 import { filterToStationUnits } from '../config/stationUnitsFilter'
+import { getEffectiveBackendUrl } from '../utils/backendUrl'
 
 interface RoomSpeakerStatus {
   roomId: string
@@ -32,7 +33,7 @@ function RoomSpeakerAdmin() {
   const [roomName, setRoomName] = useState('')
   const [selectedUnits, setSelectedUnits] = useState<string[]>([])
   const [customUnit, setCustomUnit] = useState('')
-  const [backendUrl, setBackendUrl] = useState('http://localhost:3000')
+  const [backendUrl, setBackendUrl] = useState(() => getEffectiveBackendUrl())
   const [availableUnits, setAvailableUnits] = useState<string[]>([])
   const [loadingUnits, setLoadingUnits] = useState(false)
 
@@ -71,16 +72,14 @@ function RoomSpeakerAdmin() {
   }
 
   useEffect(() => {
-    // Load existing config. Use current origin when viewing from app URL so units fetch succeeds
-    // (otherwise localStorage may point to 192.168.68.92 which can be unreachable when remote).
+    // Resolve backend URL using same logic as the main app
+    const effectiveBackendUrl = getEffectiveBackendUrl()
+    setBackendUrl(effectiveBackendUrl)
+    initializeAdminAuth(effectiveBackendUrl)
+
+    // Load existing config
     const savedRoomId = localStorage.getItem('roomId')
     const savedRoomName = localStorage.getItem('roomName')
-    const origin = window.location.origin
-    const isDevServer = origin.includes('5173') || !origin
-    const savedBackendUrl = !isDevServer ? origin : (localStorage.getItem('backendUrl') || 'http://localhost:3000')
-
-    setBackendUrl(savedBackendUrl)
-    initializeAdminAuth(savedBackendUrl)
 
     if (savedRoomId) {
       setRoomId(savedRoomId)
@@ -88,7 +87,7 @@ function RoomSpeakerAdmin() {
     }
 
     // Always fetch available units (public endpoint, no auth required)
-    fetchAvailableUnits(savedBackendUrl)
+    fetchAvailableUnits(effectiveBackendUrl)
     
     // Check if already logged in
     if (isAdminLoggedIn()) {
