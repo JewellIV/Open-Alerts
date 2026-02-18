@@ -18,6 +18,15 @@ const path = require('path');
 const app = express();
 app.use(express.json());
 
+// CORS: allow frontend (served from engine-bay or same host) to call this service from the room Pi's browser
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 const ROOM_PINS = process.env.ROOM_PINS
   ? process.env.ROOM_PINS.split(',').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n))
   : [4, 5, 6, 12, 13, 16, 21, 24];
@@ -172,6 +181,7 @@ app.post('/gpio/mute', (req, res) => {
     if (writePin(pin, mute)) changed.push(pin);
   }
 
+  console.log(`🔌 /gpio/mute mute=${mute} targetPins=[${targetPins.join(',')}] changed=[${changed.join(',')}]`);
   return res.json({ success: true, mute, pins: changed });
 });
 

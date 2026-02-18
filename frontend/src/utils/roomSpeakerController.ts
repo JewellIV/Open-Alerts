@@ -225,8 +225,10 @@ async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean
       body: JSON.stringify(body)
     })
     if (gpioRes.ok) return true
-  } catch (_) {
-    // Local GPIO service not running (e.g. on server Pi or dev machine)
+    const errText = await gpioRes.text()
+    console.warn(`Room GPIO local mute failed (${gpioRes.status}): ${errText}`)
+  } catch (e) {
+    console.warn('Room GPIO local request failed (is room-gpio-service running on this Pi on port 4000?):', e)
   }
   return false
 }
