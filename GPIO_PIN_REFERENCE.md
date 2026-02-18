@@ -79,3 +79,57 @@ Example:
 **Total Used: 10 pins**
 
 **Remaining Available: ~16 GPIO pins** for future expansion (GPIO 10-17, 19-20, 24-27)
+
+### Why some relay LEDs are bright and some dim
+
+- **Bright** = that channel’s GPIO is being **driven** (HIGH or LOW) by the Pi. The relay/LED is in a defined state.
+- **Dim** = that GPIO is **floating** (not driven). The pin was never set to output, or init failed for that pin, so the LED gets a weak voltage and glows dim.
+
+**Fix:** Ensure every relay pin is initialized and driven. The room GPIO service now retries each pin once and drives all pins LOW twice at startup so none are left floating. If a pin still stays dim, check `journalctl -u room-gpio-service` for init errors for that GPIO number.
+
+---
+
+## Single source → single speaker (one relay)
+
+Use this when you have **one audio source** (e.g. amplifier output or line out) and **one speaker**, and you want the Pi to mute/unmute that path with **one relay**.
+
+### What you need
+
+- 1× relay module (one channel; or one channel of an 8‑channel board)
+- Audio source (amp output or line-level)
+- One speaker
+- Raspberry Pi (room Pi or main station)
+- Jumper wires (Pi GPIO → relay IN, GND → GND; relay VCC if needed)
+
+### Wiring (audio)
+
+- **Audio path:**  
+  **Source (L)** → relay **COM** → relay **NO** (or **NC**) → **Speaker (L)**  
+  **Source (R)** → (optional second relay or pass-through) → **Speaker (R)**  
+
+  Use **NO** (normally open) if you want: relay **off** = no sound, relay **on** = sound.  
+  Use **NC** (normally closed) if you want: relay **off** = sound, relay **on** = mute.
+
+- **Ground:** Connect **source ground**, **relay GND**, and **Pi GND** together (common ground).
+
+### Wiring (relay control to Pi)
+
+| Relay module | Pi (BCM)        |
+|-------------|------------------|
+| IN (or IN1) | GPIO pin (e.g. 4) |
+| GND         | GND (e.g. Pin 6, 9, 14, 20, 25, 30, 34, 39) |
+| VCC         | 3.3V or 5V (per your relay board; many use 3.3V) |
+
+Use one of your free GPIO pins (e.g. 4, 5, 6, 12, 13, 16, 21, 24). Do **not** use 7, 8, 9 if SPI is enabled.
+
+### How Open-Alerts uses it
+
+- **Mute** = Pi sets that GPIO so the relay opens (or closes) the audio path → no sound to the speaker.
+- **Unmute** = Pi sets GPIO the other way → sound flows to the speaker.
+
+If the relay is “backwards” (mute/unmute swapped), set `RELAY_ACTIVE_HIGH=1` in the room-gpio-service (or adjust your COM/NO/NC wiring).
+
+### One room, one relay
+
+- On the **room Pi**: run the room-gpio-service with `ROOM_PINS` containing only that one GPIO (e.g. `ROOM_PINS=4`).
+- Quiet mode on that display will mute/unmute that one relay (and thus that one speaker) on that device only.

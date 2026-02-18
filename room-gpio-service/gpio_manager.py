@@ -5,6 +5,7 @@ Reads commands from stdin: "PIN VALUE" (e.g., "4 1" to set pin 4 to high).
 """
 import sys
 import os
+import time
 
 # Get pins from environment (avoid SPI 7,8,9,10,11; use 24 not 22 if GPIO 22 doesn't turn on)
 ROOM_PINS = os.environ.get('ROOM_PINS', '4,5,6,12,13,16,21,24').split(',')
@@ -14,45 +15,49 @@ RELAY_ACTIVE_HIGH = os.environ.get('RELAY_ACTIVE_HIGH') == '1'
 
 devices = {}
 
+def init_pin(pin, active_high_setting):
+    """Try to init one pin; retry once after short delay (helps Pi 5)."""
+    try:
+        dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
+        dev.value = False
+        return dev
+    except Exception as e:
+        print(f"⚠️ GPIO {pin} init error: {e}", flush=True, file=sys.stderr)
+        time.sleep(0.25)
+        try:
+            dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
+            dev.value = False
+            print(f"✅ GPIO {pin} initialized on retry", flush=True)
+            return dev
+        except Exception as e2:
+            print(f"❌ GPIO {pin} failed again: {e2}", flush=True, file=sys.stderr)
+            return None
+
 try:
     from gpiozero import DigitalOutputDevice
     
-    # Initialize all devices and keep them open
     # RELAY_ACTIVE_HIGH: "1" = relay ON when GPIO HIGH, "0" (default) = relay ON when GPIO LOW
-    # gpiozero active_high: True = device ON when HIGH, False = device ON when LOW
-    # So: RELAY_ACTIVE_HIGH="1" → gpiozero active_high=True
-    #     RELAY_ACTIVE_HIGH="0" → gpiozero active_high=False
-    active_high_setting = RELAY_ACTIVE_HIGH  # Use RELAY_ACTIVE_HIGH directly
+    active_high_setting = RELAY_ACTIVE_HIGH
     for pin in ROOM_PINS:
-        try:
-            # Start with all relays OFF (unmuted) - initial_value=False means OFF
-            dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
+        dev = init_pin(pin, active_high_setting)
+        if dev is not None:
             devices[pin] = dev
-            # Drive pin firmly LOW so it's not floating (stops "dimly lit" LEDs)
-            dev.value = False
             print(f"✅ GPIO {pin} initialized (active_high={active_high_setting})", flush=True)
-        except Exception as e:
-            print(f"⚠️ GPIO {pin} init error: {e}", flush=True, file=sys.stderr)
-            # Retry once (helps on Pi 5 where some pins need a second try)
-            if pin == 22:
-                try:
-                    import time
-                    time.sleep(0.2)
-                    dev = DigitalOutputDevice(pin, initial_value=False, active_high=active_high_setting)
-                    devices[pin] = dev
-                    dev.value = False
-                    print(f"✅ GPIO {pin} initialized on retry", flush=True)
-                except Exception as e2:
-                    print(f"❌ GPIO 22 failed again: {e2}. Try remapping Medic 22/Ambulance 22 to GPIO 24 in backend.", flush=True, file=sys.stderr)
     
-    # Explicitly set every pin LOW again so none are left floating
-    for pin, dev in devices.items():
-        try:
-            dev.value = False
-        except Exception as e:
-            print(f"⚠️ GPIO {pin} set-off error: {e}", flush=True, file=sys.stderr)
+    # Drive every pin LOW twice with short delay so output is firmly driven (no dim/floating LEDs)
+    for _ in range(2):
+        for pin, dev in devices.items():
+            try:
+                dev.value = False
+            except Exception as e:
+                print(f"⚠️ GPIO {pin} set-off error: {e}", flush=True, file=sys.stderr)
+        time.sleep(0.05)
     
-    print(f"🚨 GPIO Manager ready for {len(devices)} pins (all driven LOW)", flush=True)
+    ok_pins = sorted(devices.keys())
+    failed = [p for p in ROOM_PINS if p not in devices]
+    print(f"🚨 GPIO Manager ready for {len(devices)} pins (all driven LOW): {ok_pins}", flush=True)
+    if failed:
+        print(f"⚠️ Pins NOT initialized (will stay dim if used): {failed}", flush=True, file=sys.stderr)
     
     # Read commands from stdin: "PIN VALUE"
     for line in sys.stdin:

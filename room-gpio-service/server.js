@@ -22,6 +22,12 @@ const ROOM_PINS = process.env.ROOM_PINS
   ? process.env.ROOM_PINS.split(',').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n))
   : [4, 5, 6, 12, 13, 16, 21, 24];
 
+const SPI_PINS = [7, 8, 9, 10, 11]; // Avoid these when SPI is enabled or some channels stay dim
+if (ROOM_PINS.some((p) => SPI_PINS.includes(p))) {
+  console.warn('⚠️ ROOM_PINS includes SPI pins (7,8,9,10,11). Those channels may stay dim or not drive. Use 4,5,6,12,13,16,21,24 instead.');
+}
+console.log(`🔌 ROOM_PINS: [${ROOM_PINS.join(', ')}]`);
+
 const PORT = process.env.GPIO_PORT ? parseInt(process.env.GPIO_PORT, 10) : 4000;
 const RELAY_ACTIVE_HIGH = process.env.RELAY_ACTIVE_HIGH === '1';
 
@@ -87,10 +93,10 @@ if (usePythonGpio && process.platform === 'linux') {
     process.pythonGpioManager = pythonManager;
     console.log('✅ Python GPIO manager started');
     
-    // After a short delay, send "all pins OFF" so every pin is driven LOW (no floating = no dim LEDs)
+    // After a short delay, send "all pins OFF" so every pin is driven (no floating = no dim LEDs)
     setTimeout(() => {
       if (process.pythonGpioManager && process.pythonGpioManager.stdin && !process.pythonGpioManager.stdin.destroyed) {
-        const offValue = RELAY_ACTIVE_HIGH ? 0 : 1; // 0 = relay off when active-low
+        const offValue = RELAY_ACTIVE_HIGH ? 0 : 1;
         ROOM_PINS.forEach((pin) => {
           try {
             process.pythonGpioManager.stdin.write(`${pin} ${offValue}\n`);

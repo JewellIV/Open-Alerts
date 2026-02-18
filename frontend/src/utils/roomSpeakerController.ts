@@ -204,28 +204,25 @@ async function getPinsForUnits(units: string[]): Promise<number[]> {
 
 /**
  * Try to mute/unmute via local room GPIO service (room Pi).
- * Gets pin list from central backend for this room, then POSTs to localhost:4000.
- * Returns true if local GPIO was used, false to fall back to central backend.
+ * For quiet mode (no pins given): POST with just { mute } so the local service uses
+ * all ROOM_PINS on this device only. For unit-specific control, pass pins from backend status.
  */
 async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean> {
   if (!roomConfig) return false
 
   try {
-    // If pins not provided, get all pins for the room
-    let targetPins = pins
-    if (!targetPins || targetPins.length === 0) {
-      const statusRes = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/status`)
-      if (!statusRes.ok) return false
-      const status = await statusRes.json()
-      targetPins = status.pins as number[] | undefined
+    let body: { mute: boolean; pins?: number[] }
+    if (pins && pins.length > 0) {
+      body = { mute, pins }
+    } else {
+      // Quiet mode or no pins: tell local service to mute/unmute ALL pins on this device (ROOM_PINS)
+      body = { mute }
     }
-    
-    if (!targetPins || targetPins.length === 0) return false
 
     const gpioRes = await fetch(`${LOCAL_GPIO_URL}/gpio/mute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mute, pins: targetPins })
+      body: JSON.stringify(body)
     })
     if (gpioRes.ok) return true
   } catch (_) {
@@ -335,28 +332,33 @@ async function unmuteRoomSpeakerForUnits(units: string[]): Promise<void> {
 export async function handleRoomAlert(alertUnits: string, _isNighttime: boolean): Promise<boolean> {
   if (!roomConfig) return true
   
-  // Check quiet mode
-  if (isQuietMode) {
-    console.log(`🔇 Quiet mode active - alert muted for ${roomConfig.roomName}`)
-    return false
-  }
-  
+  // Quiet mode: baseline is muted, but we still unmute for incoming alerts (station-wide = all channels, unit = that unit's pins)
+  // So we do NOT return here; we continue and unmute the appropriate channels so the alert is heard.
+
   // Check unit assignments
   if (!shouldPlayAlertInRoom(alertUnits)) {
     console.log(`🔇 No matching units - alert muted for ${roomConfig.roomName}`)
     return false
   }
   
-  // Parse alert units and unmute only those pins
-  const alertUnitList = alertUnits.split(',').map(u => u.trim()).filter(u => u)
-  if (alertUnitList.length > 0) {
-    // Unmute only pins for these specific units
-    await unmuteRoomSpeakerForUnits(alertUnitList)
-  } else {
-    // No specific units - unmute all (station-wide alert)
+  // Parse alert units: station-wide (no unit or "Station") = open ALL channels; else open only those units' GPIOs
+  const rawAlertUnits = alertUnits.split(',').map(u => u.trim()).filter(u => u)
+  const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
+  const isStationWide =
+    rawAlertUnits.length === 0 ||
+    alertUnitList.some(
+      (u) => u.toLowerCase() === 'station' || (u && u.toLowerCase().includes('station'))
+    )
+
+  if (isStationWide) {
+    // Station / no unit assigned: open all 8 channels on this device (mens_bunk 8‑channel relay)
     await unmuteRoomSpeaker()
+    currentAlertPins = [] // so handleRoomAlertComplete will mute all (nighttime)
+  } else {
+    // Specific unit(s) assigned: open only those units' GPIO channels
+    await unmuteRoomSpeakerForUnits(alertUnitList)
   }
-  
+
   return true
 }
 
@@ -381,11 +383,11 @@ export async function handleRoomAlertComplete(): Promise<void> {
         currentAlertPins = []
       })
     }, 2000)
-  } else if (isNighttime()) {
-    // No specific pins tracked - mute all (nighttime behavior)
+  } else if (isNighttime() || isQuietMode) {
+    // No specific pins tracked - mute all (nighttime or quiet mode: return to muted state)
     setTimeout(() => {
       muteRoomSpeaker()
-      console.log(`🌙 Alert complete - room speaker muted (nighttime)`)
+      console.log(isQuietMode ? `🔇 Alert complete - room speaker muted (quiet mode)` : `🌙 Alert complete - room speaker muted (nighttime)`)
     }, 2000)
   }
 }
