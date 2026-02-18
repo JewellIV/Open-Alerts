@@ -250,11 +250,8 @@ async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean
 export function shouldPlayAlertInRoom(alertUnits: string): boolean {
   if (!roomConfig) return true // If no config, play all alerts
   
-  // If quiet mode is enabled, don't play alerts
-  if (isQuietMode) {
-    return false
-  }
-  
+  // Quiet mode does NOT block alerts here – handleRoomAlert still unmutes the right channels so dispatched units hear the alert
+
   // Parse units from alert - resolve CAD codes to display names for matching
   const rawAlertUnits = alertUnits.split(',').map(u => u.trim()).filter(u => u)
   const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
