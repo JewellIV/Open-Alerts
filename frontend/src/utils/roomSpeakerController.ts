@@ -252,8 +252,28 @@ async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean
  * - If room has no units selected → Play all alerts
  * - Otherwise, only play if alert units match room's selected units
  */
-/** Unit codes that always override quiet mode and play in all rooms (e.g. staff/working station). */
-const OVERRIDE_QUIET_UNITS = ['sta2', 'workingsta2']
+/**
+ * Unit identifiers that should behave like station-wide alerts:
+ * - Always play in all rooms
+ * - Open all relay channels (not just matching unit pins)
+ *
+ * MA is matched as a full token/code (e.g. "MA", "MA2"), not as a substring,
+ * so regular units like "Ambulance 21" do not trigger this override.
+ */
+const OVERRIDE_QUIET_UNITS = new Set(['sta2', 'workingsta2', 'ma', 'mutualaid'])
+
+function normalizeUnitIdentifier(unit: string): string {
+  return unit.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function isOverrideUnit(unit: string | undefined): boolean {
+  if (!unit) return false
+  const normalized = normalizeUnitIdentifier(unit)
+  if (!normalized) return false
+  if (OVERRIDE_QUIET_UNITS.has(normalized)) return true
+  // Allow coded MA unit variants like MA2 / MA21 while avoiding substring matches.
+  return /^ma\d+$/.test(normalized)
+}
 
 export function shouldPlayAlertInRoom(alertUnits: string | undefined): boolean {
   if (!roomConfig) return true // If no config, play all alerts
@@ -267,9 +287,9 @@ export function shouldPlayAlertInRoom(alertUnits: string | undefined): boolean {
   const rawAlertUnits = unitsStr.split(',').map(u => u.trim()).filter(Boolean)
   const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
   
-  // STA2 / WORKINGSTA2 (and similar) always play in all rooms and open all GPIO channels
+  // Station-wide override units always play in all rooms and open all GPIO channels.
   const hasOverrideUnit = [...rawAlertUnits, ...alertUnitList].some(u =>
-    u && OVERRIDE_QUIET_UNITS.some(override => u.toLowerCase().includes(override))
+    isOverrideUnit(u)
   )
   if (hasOverrideUnit) {
     return true
@@ -375,12 +395,12 @@ export async function handleRoomAlert(alertUnits: string | undefined, _isNightti
   }
   
   const unitsStr = typeof alertUnits === 'string' ? alertUnits : String(alertUnits ?? '')
-  // Parse alert units: station-wide (no unit, "Station", or STA2/WORKINGSTA2) = open ALL channels; else open only those units' GPIOs
+  // Parse alert units: station-wide (no unit, "Station", or override units like STA2/MA) = open ALL channels; else open unit GPIOs
   const rawAlertUnits = unitsStr.split(',').map(u => u.trim()).filter(Boolean)
   const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
   const isOverrideOrStation = [...rawAlertUnits, ...alertUnitList].some(u =>
     u && (u.toLowerCase() === 'station' || u.toLowerCase().includes('station') ||
-      OVERRIDE_QUIET_UNITS.some(ov => u.toLowerCase().includes(ov)))
+      isOverrideUnit(u))
   )
   const isStationWide =
     rawAlertUnits.length === 0 ||
