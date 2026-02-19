@@ -1507,28 +1507,25 @@ function getPinForUnit(unitName: string): number | null {
 }
 
 // Parse room speaker config from environment variable
-// Format: ROOM_SPEAKERS=room1:Engine 1|Ladder 2,room2:Medic 3|Engine 2
-// Note: GPIO pins are now auto-assigned based on unit numbers
+// Format: room1:Engine 1|Ladder 2,room2:Medic 3  OR  room1,room2,room3 (room IDs only, no units)
 const roomSpeakersEnv = process.env.ROOM_SPEAKERS;
 if (roomSpeakersEnv) {
-  const rooms = roomSpeakersEnv.split(',');
+  const rooms = roomSpeakersEnv.split(',').map(s => s.trim()).filter(Boolean);
   for (const room of rooms) {
     const parts = room.split(':');
-    if (parts.length >= 2) {
-      const roomId = parts[0].trim();
-      const units = parts[1] ? parts[1].split('|').map(u => u.trim()) : undefined;
-      
-      roomSpeakerConfigs.push({
-        roomId,
-        roomName: roomId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        units
-      });
-      
-      // Extract pins from units and build mappings
-      if (units) {
-        for (const unit of units) {
-          getPinForUnit(unit);
-        }
+    const roomId = parts[0].trim();
+    if (!roomId) continue;
+    const units = parts.length >= 2 && parts[1] ? parts[1].split('|').map(u => u.trim()) : undefined;
+
+    roomSpeakerConfigs.push({
+      roomId,
+      roomName: roomId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      units
+    });
+
+    if (units) {
+      for (const unit of units) {
+        getPinForUnit(unit);
       }
     }
   }
@@ -1813,7 +1810,8 @@ app.post('/api/room-speaker/:roomId/mute', async (req: Request, res: Response) =
         message: `Room speaker ${mute ? 'muted' : 'unmuted'} successfully`
       });
     }
-    
+
+    // Room has no gpioServiceUrl – central server has no relay for this room; relays are on room Pi, so set ROOM_GPIO_URLS for this roomId
     if (!roomConfig.units || roomConfig.units.length === 0) {
       return res.json({
         success: true,
