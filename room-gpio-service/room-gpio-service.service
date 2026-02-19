@@ -1,15 +1,22 @@
 [Unit]
 Description=OpenAlerts Room GPIO relay service (per-room Pi)
+# Start after network is configured
 After=network.target
+# Avoid boot loop: stop restarting after 5 failures in 2 minutes (older systemd expects these in [Unit])
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=mvfdadmin
+# EDIT if needed: path where room-gpio-service is installed (Open-Alerts clone or room-gpio-service)
 WorkingDirectory=/home/mvfdadmin/Open-Alerts/room-gpio-service
 # Set pins for this room (4,5,6,12,13,16,21,24 - use 24 not 22 if GPIO 22 doesn't turn on)
 Environment=ROOM_PINS=4,5,6,12,13,16,21,24
 Environment=GPIO_PORT=4000
-ExecStart=/usr/bin/node server.js
+# Use login shell so nvm/node is in PATH; if you use system node, change to: ExecStart=/usr/bin/node server.js
+ExecStart=/bin/bash -lc 'node server.js'
+# Restart on crash or exit so service recovers after power/connection loss
 Restart=always
 RestartSec=5
 

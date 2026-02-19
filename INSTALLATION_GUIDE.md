@@ -774,14 +774,19 @@ When each room has its **own Pi and 8-channel relay** (speaker wire stays short 
    export GPIO_PORT=4000
    npm start
    ```
-3. (Optional) Run as systemd service at boot:
+3. **Run as systemd service so it starts on boot and restarts after power/network loss:**
    ```bash
    sudo cp room-gpio-service.service /etc/systemd/system/
-   sudo nano /etc/systemd/system/room-gpio-service.service   # set ROOM_PINS for this room
-   sudo systemctl daemon-reload
-   sudo systemctl enable room-gpio-service
-   sudo systemctl start room-gpio-service
+   sudo nano /etc/systemd/system/room-gpio-service.service
    ```
+   In the service file, set **WorkingDirectory** to the path where you installed the app on this Pi (e.g. `/home/mvfdadmin/room-gpio-service` or `/home/mvfdadmin/Open-Alerts/room-gpio-service`). Set **ROOM_PINS** for this room if needed. Then:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable room-gpio-service   # start on boot
+   sudo systemctl start room-gpio-service
+   sudo systemctl status room-gpio-service   # confirm running
+   ```
+   The service is configured to restart automatically if it crashes (e.g. after connection loss). If it doesn’t start after reboot, check that **WorkingDirectory** matches the actual install path and run `sudo systemctl enable room-gpio-service` again.
 4. On that room’s **display**, set **Backend URL** to the central server (e.g. `http://alerts.mangohickfire.com:3000`). If the app is loaded from that URL (not from the room Pi’s own host), the browser may block requests to `localhost:4000` (Chrome Private Network Access). In that case, configure the **central server** to proxy mute to the room Pi:
 
    On the **engine bay / central server**, set:
