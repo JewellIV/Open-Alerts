@@ -5,7 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { exec } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
+import type { ChildProcessWithoutNullStreams } from 'child_process';
 import multer from 'multer';
 import db from './database';
 import { sendDiscordAlert, isDiscordConfigured } from './services/discordService';
@@ -1385,6 +1386,133 @@ const unitSpeakerRelays: Map<number, any> = new Map(); // pinNumber -> Gpio inst
 const unitToPinMap: Map<string, number> = new Map(); // unitName -> pinNumber
 const pinToUnitsMap: Map<number, string[]> = new Map(); // pinNumber -> unitNames[]
 
+const USE_PYTHON_GPIO = process.env.USE_PYTHON_GPIO === '1';
+let usePythonGpio = USE_PYTHON_GPIO;
+let pythonGpioManager: ChildProcessWithoutNullStreams | null = null;
+const pythonGpioPins = new Set<number>();
+const gpioManagerScript = path.join(__dirname, '../room-gpio-service/gpio_manager.py');
+const gpioWriteScript = path.join(__dirname, '../room-gpio-service/gpio_write.py');
+
+function getAllRelayPins(): number[] {
+  const pins = new Set<number>([18, 23]); // Main amplifier/radio relay pins
+  for (const pin of unitToPinMap.values()) {
+    pins.add(pin);
+  }
+  return Array.from(pins).filter((pin) => Number.isInteger(pin) && pin > 0).sort((a, b) => a - b);
+}
+
+function writePythonPinValue(pin: number, value: number): boolean {
+  if (pythonGpioManager?.stdin && !pythonGpioManager.stdin.destroyed) {
+    try {
+      pythonGpioManager.stdin.write(`${pin} ${value}\n`);
+      return true;
+    } catch (error) {
+      console.warn(`⚠️ Python GPIO manager write failed for pin ${pin}:`, error);
+    }
+  }
+
+  if (!fs.existsSync(gpioWriteScript)) {
+    console.warn(`⚠️ GPIO fallback script not found: ${gpioWriteScript}`);
+    return false;
+  }
+
+  try {
+    execSync(`python3 "${gpioWriteScript}" ${pin} ${value}`, { stdio: 'pipe', timeout: 2000 });
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ Python GPIO fallback write failed for pin ${pin}:`, error);
+    return false;
+  }
+}
+
+function ensurePythonGpioManager(explicitPins?: number[]): boolean {
+  if (process.platform !== 'linux') return false;
+  if (pythonGpioManager?.stdin && !pythonGpioManager.stdin.destroyed) return true;
+
+  const pins = (explicitPins && explicitPins.length > 0 ? explicitPins : getAllRelayPins())
+    .filter((pin) => Number.isInteger(pin) && pin > 0);
+  if (pins.length === 0) return false;
+
+  if (!fs.existsSync(gpioManagerScript)) {
+    console.warn(`⚠️ GPIO manager script not found: ${gpioManagerScript}`);
+    return false;
+  }
+
+  pythonGpioPins.clear();
+  pins.forEach((pin) => pythonGpioPins.add(pin));
+
+  try {
+    const manager = spawn('python3', [gpioManagerScript], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ROOM_PINS: pins.join(','),
+        // Use active-high in the manager so pin values match onoff semantics (1=mute, 0=unmute).
+        RELAY_ACTIVE_HIGH: '1'
+      }
+    });
+
+    manager.stdout.on('data', (data) => {
+      const text = data.toString().trim();
+      if (text) console.log(`[Main GPIO Manager] ${text}`);
+    });
+    manager.stderr.on('data', (data) => {
+      const text = data.toString().trim();
+      if (text) console.warn(`[Main GPIO Manager] ${text}`);
+    });
+    manager.on('exit', (code) => {
+      console.warn(`⚠️ Main GPIO manager exited with code ${code}`);
+      pythonGpioManager = null;
+    });
+    manager.on('error', (error) => {
+      console.warn('⚠️ Main GPIO manager error:', error);
+      pythonGpioManager = null;
+    });
+
+    pythonGpioManager = manager;
+    console.log('📌 Using Python gpiozero fallback for main relays');
+    console.log(`✅ Main GPIO manager started for pins: [${pins.join(', ')}]`);
+
+    // Set all known relay pins to unmuted state on startup.
+    setTimeout(() => {
+      for (const pin of pythonGpioPins) {
+        writePythonPinValue(pin, 0);
+      }
+    }, 500);
+
+    return true;
+  } catch (error) {
+    console.warn('⚠️ Could not start Python GPIO manager fallback:', error);
+    pythonGpioManager = null;
+    return false;
+  }
+}
+
+function writeRelayPin(pin: number, mute: boolean, relay?: any): boolean {
+  const value = mute ? 1 : 0;
+
+  if (!usePythonGpio && relay) {
+    try {
+      relay.writeSync(value);
+      return true;
+    } catch (error) {
+      console.warn(`⚠️ GPIO write failed on pin ${pin} with onoff, switching to gpiozero fallback:`, error);
+      usePythonGpio = true;
+    }
+  }
+
+  if (usePythonGpio) {
+    if (!ensurePythonGpioManager(getAllRelayPins())) return false;
+    return writePythonPinValue(pin, value);
+  }
+
+  return false;
+}
+
+function isPinControllable(pin: number): boolean {
+  return unitSpeakerRelays.has(pin) || (usePythonGpio && pythonGpioPins.has(pin));
+}
+
 // Room configuration - maps room IDs to unit assignments (no longer has gpioPin)
 interface RoomSpeakerConfig {
   roomId: string
@@ -1603,58 +1731,66 @@ try {
 
 // Initialize GPIO relays (only on Raspberry Pi)
 if (process.platform === 'linux') {
-  try {
-    // Try to import onoff (may not be installed)
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Gpio } = require('onoff');
-    
-    // Amplifier relay (GPIO 18) - stays OFF (unmuted) so alerts always play
-    amplifierRelay = new Gpio(18, 'out');
-    amplifierRelay.writeSync(0); // Start unmuted (alerts always play)
-    console.log('✅ Amplifier relay initialized on GPIO 18 (stays OFF - alerts always play)');
-    
-    // Radio relay (GPIO 23) - controls radio muting independently
-    radioRelay = new Gpio(23, 'out');
-    radioRelay.writeSync(0); // Start unmuted (radio plays)
-    console.log('✅ Radio relay initialized on GPIO 23');
-    
-    // Initialize unit-based speaker relays
-    // Each unique pin gets one relay instance
-    const initializedPins = new Set<number>();
-    for (const [unitName, pin] of unitToPinMap.entries()) {
-      if (!initializedPins.has(pin)) {
-        try {
-          const relay = new Gpio(pin, 'out');
-          relay.writeSync(0); // Start unmuted (speakers play)
-          unitSpeakerRelays.set(pin, relay);
-          initializedPins.add(pin);
-          
-          const unitsForPin = pinToUnitsMap.get(pin) || [];
-          console.log(`✅ Unit speaker relay initialized: GPIO ${pin} (Units: ${unitsForPin.join(', ')})`);
-        } catch (error) {
-          console.warn(`⚠️ Failed to initialize unit speaker relay for GPIO ${pin}:`, error);
+  const allRelayPins = getAllRelayPins();
+  if (usePythonGpio) {
+    if (!ensurePythonGpioManager(allRelayPins)) {
+      console.warn('⚠️ USE_PYTHON_GPIO=1 set, but Python gpiozero manager failed to start');
+    }
+  } else {
+    try {
+      // Try to import onoff (may not be installed)
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { Gpio } = require('onoff');
+      
+      // Amplifier relay (GPIO 18) - stays OFF (unmuted) so alerts always play
+      amplifierRelay = new Gpio(18, 'out');
+      amplifierRelay.writeSync(0); // Start unmuted (alerts always play)
+      console.log('✅ Amplifier relay initialized on GPIO 18 (stays OFF - alerts always play)');
+      
+      // Radio relay (GPIO 23) - controls radio muting independently
+      radioRelay = new Gpio(23, 'out');
+      radioRelay.writeSync(0); // Start unmuted (radio plays)
+      console.log('✅ Radio relay initialized on GPIO 23');
+      
+      // Initialize unit-based speaker relays
+      // Each unique pin gets one relay instance
+      const initializedPins = new Set<number>();
+      for (const [unitName, pin] of unitToPinMap.entries()) {
+        if (!initializedPins.has(pin)) {
+          try {
+            const relay = new Gpio(pin, 'out');
+            relay.writeSync(0); // Start unmuted (speakers play)
+            unitSpeakerRelays.set(pin, relay);
+            initializedPins.add(pin);
+            
+            const unitsForPin = pinToUnitsMap.get(pin) || [];
+            console.log(`✅ Unit speaker relay initialized: GPIO ${pin} (Units: ${unitsForPin.join(', ')})`);
+          } catch (error) {
+            console.warn(`⚠️ Failed to initialize unit speaker relay for GPIO ${pin}:`, error);
+          }
         }
       }
+      
+      console.log(`📊 Initialized ${unitSpeakerRelays.size} unit-based speaker relays`);
+    } catch (error) {
+      console.warn('⚠️ onoff GPIO unavailable - switching main backend relays to Python gpiozero fallback');
+      usePythonGpio = true;
+      if (!ensurePythonGpioManager(allRelayPins)) {
+        console.warn('⚠️ Python gpiozero fallback failed. Install python3-gpiozero and verify room-gpio-service scripts exist.');
+      }
     }
-    
-    console.log(`📊 Initialized ${unitSpeakerRelays.size} unit-based speaker relays`);
-  } catch (error) {
-    console.warn('⚠️ GPIO not available - onoff library may not be installed');
-    console.warn('Install with: npm install onoff');
-    console.warn('For dual relay setup, install onoff and restart backend');
   }
 }
 
 app.post('/api/amplifier/mute', validateApiKey, (req: Request, res: Response) => {
   try {
-    const { mute } = req.body;
+    const mute = !!req.body?.mute;
     
     // For dual relay setup: amplifier relay stays OFF (unmuted), radio relay controls radio
     // This endpoint controls radio muting (not amplifier muting)
-    if (radioRelay) {
-      // GPIO control: 1 = mute radio (relay closed), 0 = unmute radio (relay open)
-      radioRelay.writeSync(mute ? 1 : 0);
-      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} via GPIO pin 23`);
+    if (writeRelayPin(23, mute, radioRelay)) {
+      const mode = usePythonGpio ? 'python-gpiozero fallback' : 'onoff';
+      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} via ${mode} (GPIO 23)`);
     } else {
       console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} (GPIO not available)`);
     }
@@ -1701,7 +1837,8 @@ app.get('/api/amplifier/status', validateApiKey, (req: Request, res: Response) =
     // Return amplifier status
     res.json({ 
       success: true,
-      available: true,
+      available: !!radioRelay || usePythonGpio,
+      gpioMode: usePythonGpio ? 'python-gpiozero' : (radioRelay ? 'onoff' : 'unavailable'),
       message: 'Amplifier control API available'
     });
   } catch (error) {
@@ -1732,19 +1869,13 @@ app.post('/api/unit-speaker/mute', validateAdminSession, (req: Request, res: Res
       const pin = getPinForUnit(unitName);
       if (pin && !controlledPins.has(pin)) {
         const relay = unitSpeakerRelays.get(pin);
-        if (relay) {
-          try {
-            // GPIO control: 1 = mute (relay closed), 0 = unmute (relay open)
-            relay.writeSync(mute ? 1 : 0);
-            controlledPins.add(pin);
-            results.push({ unit: unitName, pin, success: true });
-            console.log(`🔊 Unit speaker ${mute ? 'muted' : 'unmuted'}: ${unitName} (GPIO ${pin})`);
-          } catch (error) {
-            results.push({ unit: unitName, pin, success: false });
-            console.error(`Error controlling relay for ${unitName} (GPIO ${pin}):`, error);
-          }
+        if (writeRelayPin(pin, !!mute, relay)) {
+          controlledPins.add(pin);
+          results.push({ unit: unitName, pin, success: true });
+          console.log(`🔊 Unit speaker ${mute ? 'muted' : 'unmuted'}: ${unitName} (GPIO ${pin})`);
         } else {
           results.push({ unit: unitName, pin, success: false });
+          console.warn(`⚠️ GPIO relay not available for ${unitName} (GPIO ${pin})`);
         }
       }
     }
@@ -1828,8 +1959,7 @@ app.post('/api/room-speaker/:roomId/mute', async (req: Request, res: Response) =
       const pin = getPinForUnit(unitName);
       if (pin && !controlledPins.has(pin)) {
         const relay = unitSpeakerRelays.get(pin);
-        if (relay) {
-          relay.writeSync(mute ? 1 : 0);
+        if (writeRelayPin(pin, !!mute, relay)) {
           controlledPins.add(pin);
         }
       }
@@ -1873,7 +2003,7 @@ app.get('/api/room-speaker/:roomId/status', (req: Request, res: Response) => {
             if (!pins.includes(pin)) {
               pins.push(pin);
             }
-            const available = !!roomConfig.gpioServiceUrl || unitSpeakerRelays.has(pin);
+            const available = !!roomConfig.gpioServiceUrl || isPinControllable(pin);
             unitPins.push({
               unit: unitName,
               pin,
@@ -1905,7 +2035,7 @@ app.get('/api/room-speaker/:roomId/status', (req: Request, res: Response) => {
         units: roomConfig.units || [],
         unitPins,
         pins,
-        available: pins.length > 0 && (!!roomConfig.gpioServiceUrl || pins.some(pin => unitSpeakerRelays.has(pin))),
+        available: pins.length > 0 && (!!roomConfig.gpioServiceUrl || pins.some(pin => isPinControllable(pin))),
         message: 'Room speaker configuration available'
       });
     } else {
@@ -1943,7 +2073,7 @@ app.get('/api/room-speakers', validateAdminSession, (req: Request, res: Response
         roomName: config.roomName,
         units: config.units || [],
         pins,
-        available: pins.length > 0 && pins.some(pin => unitSpeakerRelays.has(pin))
+        available: pins.length > 0 && pins.some(pin => isPinControllable(pin))
       };
     });
     
@@ -2092,7 +2222,7 @@ app.get('/api/unit-pins', validateAdminSession, (req: Request, res: Response) =>
       mappings.push({
         unit: unitName,
         pin,
-        available: unitSpeakerRelays.has(pin)
+        available: isPinControllable(pin)
       });
     }
     
