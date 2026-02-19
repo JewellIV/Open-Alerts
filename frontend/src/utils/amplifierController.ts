@@ -198,14 +198,22 @@ class HttpAmplifierController implements AmplifierController {
  */
 class GpioAmplifierController implements AmplifierController {
   private backendUrl: string
+  private apiKey?: string
 
-  constructor(backendUrl: string = 'http://localhost:3000') {
+  constructor(backendUrl: string = 'http://localhost:3000', apiKey?: string) {
     this.backendUrl = backendUrl
+    this.apiKey = apiKey?.trim() || undefined
+  }
+
+  private getApiHeaders(): Record<string, string> {
+    return this.apiKey ? { 'X-API-Key': this.apiKey } : {}
   }
 
   async initialize(): Promise<void> {
     try {
-      const response = await fetch(`${this.backendUrl}/api/amplifier/status`)
+      const response = await fetch(`${this.backendUrl}/api/amplifier/status`, {
+        headers: this.getApiHeaders()
+      })
       if (!response.ok) {
         throw new Error(`Backend amplifier API not available: ${response.status}`)
       }
@@ -217,9 +225,14 @@ class GpioAmplifierController implements AmplifierController {
   }
 
   private async sendCommand(endpoint: string, data: any): Promise<void> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...this.getApiHeaders()
+    }
+
     const response = await fetch(`${this.backendUrl}/api/amplifier${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data)
     })
 
@@ -271,6 +284,7 @@ export async function initializeAmplifier(config?: {
   httpUrl?: string
   httpApiKey?: string
   backendUrl?: string
+  backendApiKey?: string
 }): Promise<void> {
   if (isInitialized && currentController) {
     console.log('Amplifier already initialized')
@@ -283,7 +297,7 @@ export async function initializeAmplifier(config?: {
     } else if (config?.type === 'http' && config.httpUrl) {
       currentController = new HttpAmplifierController(config.httpUrl, config.httpApiKey)
     } else if (config?.type === 'gpio') {
-      currentController = new GpioAmplifierController(config.backendUrl)
+      currentController = new GpioAmplifierController(config.backendUrl, config.backendApiKey)
     } else {
       console.log('No amplifier config specified - amplifier control disabled')
       currentController = null
