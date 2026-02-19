@@ -297,7 +297,7 @@ export function shouldPlayAlertInRoom(alertUnits: string | undefined): boolean {
   }
   
   // Build list of all alert identifiers (raw + resolved) so we match CAD codes (ENG2) and display names (Engine 2)
-  const allAlertIds = [...new Set([...rawAlertUnits, ...alertUnitList].map(u => u?.toLowerCase().trim()).filter(Boolean)]
+  const allAlertIds = [...new Set([...rawAlertUnits, ...alertUnitList].map(u => u?.toLowerCase().trim()).filter(Boolean))]
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
 
   // Check if any alert unit matches this room's assigned units (substring or normalized, e.g. ENG2 vs Engine 2)
