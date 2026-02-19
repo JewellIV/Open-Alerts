@@ -57,6 +57,12 @@ function App() {
     const amplifierType = env.VITE_AMPLIFIER_TYPE || localStorage.getItem('amplifierType')
     const amplifierHttpUrl = env.VITE_AMPLIFIER_HTTP_URL || localStorage.getItem('amplifierHttpUrl')
     const amplifierApiKey = env.VITE_AMPLIFIER_HTTP_API_KEY || localStorage.getItem('amplifierHttpApiKey')
+    const amplifierBackendApiKey =
+      env.VITE_AMPLIFIER_GPIO_API_KEY ||
+      env.VITE_API_KEY ||
+      localStorage.getItem('amplifierGpioApiKey') ||
+      localStorage.getItem('apiKey') ||
+      amplifierApiKey
     
     if (amplifierType && amplifierType !== 'none') {
       const config: {
@@ -64,6 +70,7 @@ function App() {
         httpUrl?: string
         httpApiKey?: string
         backendUrl?: string
+        backendApiKey?: string
       } = {
         type: amplifierType as 'serial' | 'http' | 'gpio'
       }
@@ -73,6 +80,7 @@ function App() {
         config.httpApiKey = amplifierApiKey || undefined
       } else if (amplifierType === 'gpio') {
         config.backendUrl = backendUrl
+        config.backendApiKey = amplifierBackendApiKey || undefined
       }
       
       initializeAmplifier(config).catch(console.error)

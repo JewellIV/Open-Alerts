@@ -241,6 +241,8 @@ VITE_AMPLIFIER_HTTP_API_KEY=your-api-key
 ```env
 VITE_AMPLIFIER_TYPE=gpio
 VITE_BACKEND_URL=http://192.168.1.100:3000
+# Required when backend .env has API_KEY set:
+VITE_AMPLIFIER_GPIO_API_KEY=your-backend-api-key
 ```
 
 ### Method 2: Browser localStorage
@@ -256,6 +258,8 @@ localStorage.setItem('amplifierHttpUrl', 'http://192.168.1.XXX:PORT')
 // GPIO control
 localStorage.setItem('amplifierType', 'gpio')
 localStorage.setItem('backendUrl', 'http://192.168.1.100:3000')
+// Required when backend API_KEY is enabled:
+localStorage.setItem('amplifierGpioApiKey', 'your-backend-api-key')
 
 location.reload()
 ```
@@ -446,6 +450,7 @@ npm install --save-dev @types/node
    - Serial: Verify USB cable and port selection
    - HTTP: Verify amplifier IP and API endpoints
    - GPIO: Verify wiring and relay operation
+   - GPIO + backend API key: Set `VITE_AMPLIFIER_GPIO_API_KEY` (or `localStorage.amplifierGpioApiKey`) to match backend `API_KEY`
 
 2. **Check console logs:**
    - Should see: `✅ Amplifier controller initialized`
