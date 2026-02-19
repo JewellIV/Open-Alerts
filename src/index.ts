@@ -11,7 +11,7 @@ import db from './database';
 import { sendDiscordAlert, isDiscordConfigured } from './services/discordService';
 import { sendSlackAlert, isSlackConfigured } from './services/slackService';
 import { sendResgridAlert, isResgridConfigured, getResgridConfig } from './services/resgridService';
-import { getUnitDisplayMapping, resolveUnitsForDisplay } from './utils/unitResolution';
+import { getUnitDisplayMapping, getUnitToCadCode, resolveUnitsForDisplay } from './utils/unitResolution';
 
 dotenv.config();
 
@@ -1862,10 +1862,10 @@ app.get('/api/room-speaker/:roomId/status', (req: Request, res: Response) => {
     const roomConfig = roomSpeakerConfigs.find(r => r.roomId === roomId);
     
     if (roomConfig) {
-      // Get pins for units in this room
+      const unitToCadCode = getUnitToCadCode();
       const pins: number[] = [];
-      const unitPins: Array<{ unit: string; pin: number; available: boolean }> = [];
-      
+      const unitPins: Array<{ unit: string; pin: number; available: boolean; cadCode?: string }> = [];
+
       if (roomConfig.units) {
         for (const unitName of roomConfig.units) {
           const pin = getPinForUnit(unitName);
@@ -1873,23 +1873,27 @@ app.get('/api/room-speaker/:roomId/status', (req: Request, res: Response) => {
             if (!pins.includes(pin)) {
               pins.push(pin);
             }
-            // For rooms with gpioServiceUrl, relays are on the room Pi so pin is "available" for unmute even though we have no local relay here
             const available = !!roomConfig.gpioServiceUrl || unitSpeakerRelays.has(pin);
             unitPins.push({
               unit: unitName,
               pin,
-              available
+              available,
+              cadCode: unitToCadCode[unitName]
             });
           }
         }
       }
-      // When room has its own GPIO service (room Pi), include all known unit->pin mappings so any alert unit (e.g. Engine 2) can unmute the right channel
       if (roomConfig.gpioServiceUrl && unitToPinMap.size > 0) {
         const existingUnits = new Set(unitPins.map((u) => u.unit.toLowerCase()));
         for (const [unitName, pin] of unitToPinMap.entries()) {
           if (existingUnits.has(unitName.toLowerCase())) continue;
           if (!pins.includes(pin)) pins.push(pin);
-          unitPins.push({ unit: unitName, pin, available: true });
+          unitPins.push({
+            unit: unitName,
+            pin,
+            available: true,
+            cadCode: unitToCadCode[unitName]
+          });
           existingUnits.add(unitName.toLowerCase());
         }
       }

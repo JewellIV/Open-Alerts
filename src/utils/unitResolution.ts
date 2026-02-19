@@ -18,6 +18,21 @@ export function getUnitDisplayMapping(): Record<string, string> {
 }
 
 /**
+ * Get mapping from display name to CAD code (e.g. Engine 2 -> ENG2) for room speaker pin matching
+ */
+export function getUnitToCadCode(): Record<string, string> {
+  const stmt = db.prepare('SELECT unit_name, cad_code FROM station_units WHERE is_active = 1 AND cad_code IS NOT NULL AND cad_code != ""');
+  const rows = stmt.all() as Array<{ unit_name: string; cad_code: string | null }>;
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.cad_code && row.cad_code.trim()) {
+      map[row.unit_name] = row.cad_code.trim();
+    }
+  }
+  return map;
+}
+
+/**
  * Resolve CAD unit codes to client-defined display names
  * e.g. "ENG2, LAD1" -> "Engine 2, Ladder 1"
  */

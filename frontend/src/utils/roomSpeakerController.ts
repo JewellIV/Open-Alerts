@@ -179,19 +179,24 @@ async function getPinsForUnits(units: string[]): Promise<number[]> {
     const statusRes = await fetch(`${getEffectiveBackendUrl()}/api/room-speaker/${roomConfig.roomId}/status`)
     if (!statusRes.ok) return []
     const status = await statusRes.json()
-    const unitPins = status.unitPins as Array<{ unit: string; pin: number; available: boolean }> | undefined
+    const unitPins = status.unitPins as Array<{ unit: string; pin: number; available: boolean; cadCode?: string }> | undefined
     if (!unitPins) return []
-    
-    // Map alert units to pins (resolve CAD codes first)
+
+    // Alert units may be CAD codes (ENG2) or display names (Engine 2) – match both
     const resolvedUnits = units.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
+    const allAlertIds = [...new Set([...units, ...resolvedUnits].map(u => u?.toLowerCase().trim()).filter(Boolean))]
     const pins: number[] = []
-    
+
     for (const unitPin of unitPins) {
-      // Check if this unit matches any alert unit
-      const matches = resolvedUnits.some(alertUnit => 
-        unitPin.unit.toLowerCase().includes(alertUnit.toLowerCase()) ||
-        alertUnit.toLowerCase().includes(unitPin.unit.toLowerCase())
-      )
+      const unitLower = unitPin.unit?.toLowerCase() ?? ''
+      const cadLower = (unitPin.cadCode ?? '').toLowerCase()
+      const matches =
+        allAlertIds.some(
+          alertId =>
+            unitLower.includes(alertId) ||
+            alertId.includes(unitLower) ||
+            (cadLower && (cadLower === alertId || alertId.includes(cadLower) || cadLower.includes(alertId)))
+        )
       if (matches && unitPin.available && !pins.includes(unitPin.pin)) {
         pins.push(unitPin.pin)
       }
@@ -247,14 +252,28 @@ async function tryLocalGpioMute(mute: boolean, pins?: number[]): Promise<boolean
  * - If room has no units selected → Play all alerts
  * - Otherwise, only play if alert units match room's selected units
  */
-export function shouldPlayAlertInRoom(alertUnits: string): boolean {
+/** Unit codes that always override quiet mode and play in all rooms (e.g. staff/working station). */
+const OVERRIDE_QUIET_UNITS = ['sta2', 'workingsta2']
+
+export function shouldPlayAlertInRoom(alertUnits: string | undefined): boolean {
   if (!roomConfig) return true // If no config, play all alerts
+
+  // Coerce to string (backend may send string or serialized value)
+  const unitsStr = typeof alertUnits === 'string' ? alertUnits : String(alertUnits ?? '')
   
   // Quiet mode does NOT block alerts here – handleRoomAlert still unmutes the right channels so dispatched units hear the alert
 
   // Parse units from alert - resolve CAD codes to display names for matching
-  const rawAlertUnits = alertUnits.split(',').map(u => u.trim()).filter(u => u)
+  const rawAlertUnits = unitsStr.split(',').map(u => u.trim()).filter(Boolean)
   const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
+  
+  // STA2 / WORKINGSTA2 (and similar) always play in all rooms and open all GPIO channels
+  const hasOverrideUnit = [...rawAlertUnits, ...alertUnitList].some(u =>
+    u && OVERRIDE_QUIET_UNITS.some(override => u.toLowerCase().includes(override))
+  )
+  if (hasOverrideUnit) {
+    return true
+  }
   
   // Check if "Station" is in the alert units (station-wide alert)
   const isStationAlert = alertUnitList.some(unit => 
@@ -277,14 +296,25 @@ export function shouldPlayAlertInRoom(alertUnits: string): boolean {
     return true
   }
   
-  // Check if any alert unit matches this room's assigned units
-  const hasMatchingUnit = alertUnitList.some(alertUnit => 
-    roomConfig!.units!.some(roomUnit => 
-      alertUnit.toLowerCase().includes(roomUnit.toLowerCase()) ||
-      roomUnit.toLowerCase().includes(alertUnit.toLowerCase())
-    )
-  )
-  
+  // Build list of all alert identifiers (raw + resolved) so we match CAD codes (ENG2) and display names (Engine 2)
+  const allAlertIds = [...new Set([...rawAlertUnits, ...alertUnitList].map(u => u?.toLowerCase().trim()).filter(Boolean)]
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+
+  // Check if any alert unit matches this room's assigned units (substring or normalized, e.g. ENG2 vs Engine 2)
+  const hasMatchingUnit = roomConfig!.units!.some(roomUnit => {
+    const roomLower = roomUnit.toLowerCase()
+    const roomNorm = norm(roomUnit)
+    return allAlertIds.some(alertId => {
+      const alertNorm = norm(alertId)
+      return (
+        roomLower.includes(alertId) ||
+        alertId.includes(roomLower) ||
+        roomNorm.includes(alertNorm) ||
+        alertNorm.includes(roomNorm)
+      )
+    })
+  })
+
   return hasMatchingUnit
 }
 
@@ -332,7 +362,7 @@ async function unmuteRoomSpeakerForUnits(units: string[]): Promise<void> {
  * Handle alert for this room
  * Returns true if alert should play, false if muted/quiet mode
  */
-export async function handleRoomAlert(alertUnits: string, _isNighttime: boolean): Promise<boolean> {
+export async function handleRoomAlert(alertUnits: string | undefined, _isNighttime: boolean): Promise<boolean> {
   if (!roomConfig) return true
   
   // Quiet mode: baseline is muted, but we still unmute for incoming alerts (station-wide = all channels, unit = that unit's pins)
@@ -344,14 +374,20 @@ export async function handleRoomAlert(alertUnits: string, _isNighttime: boolean)
     return false
   }
   
-  // Parse alert units: station-wide (no unit or "Station") = open ALL channels; else open only those units' GPIOs
-  const rawAlertUnits = alertUnits.split(',').map(u => u.trim()).filter(u => u)
+  const unitsStr = typeof alertUnits === 'string' ? alertUnits : String(alertUnits ?? '')
+  // Parse alert units: station-wide (no unit, "Station", or STA2/WORKINGSTA2) = open ALL channels; else open only those units' GPIOs
+  const rawAlertUnits = unitsStr.split(',').map(u => u.trim()).filter(Boolean)
   const alertUnitList = rawAlertUnits.map(u => unitMapping[u] || unitMapping[u.toUpperCase()] || u)
+  const isOverrideOrStation = [...rawAlertUnits, ...alertUnitList].some(u =>
+    u && (u.toLowerCase() === 'station' || u.toLowerCase().includes('station') ||
+      OVERRIDE_QUIET_UNITS.some(ov => u.toLowerCase().includes(ov)))
+  )
   const isStationWide =
     rawAlertUnits.length === 0 ||
     alertUnitList.some(
       (u) => u.toLowerCase() === 'station' || (u && u.toLowerCase().includes('station'))
-    )
+    ) ||
+    isOverrideOrStation
 
   if (isStationWide) {
     // Station / no unit assigned: open all 8 channels on this device (mens_bunk 8‑channel relay)
