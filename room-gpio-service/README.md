@@ -1,6 +1,6 @@
 # Room GPIO Service
 
-Run this **on each room Pi** so that room’s display can control **local** relays (short speaker runs). The **central backend** (engine bay / server Pi) keeps the single database for alerts, notices, and room config.
+Run this **on each room Pi** so that room’s display can control **local** relays (short speaker runs). The **central backend** (Windows 10 firehouse PC, or a server Pi) keeps the single database for alerts, notices, and room config.
 
 ## Quick setup (per room Pi)
 
@@ -63,4 +63,4 @@ The OpenAlerts frontend (IdleScreen, quiet mode, room mute) uses the **central b
 2. Frontend calls this local service: `POST http://localhost:4000/gpio/mute` with `{ mute, pins }`
 3. If the local service is not running (e.g. on server Pi), the frontend falls back to the central backend’s `/api/room-speaker/:roomId/mute`
 
-So: **one database on the server Pi**, **one small GPIO service per room Pi**.
+So: **one database on the Windows PC (or server Pi)**, **one small GPIO service per room Pi**.

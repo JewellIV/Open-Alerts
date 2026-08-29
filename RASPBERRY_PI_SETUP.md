@@ -1,6 +1,8 @@
 # Raspberry Pi Setup Guide
 
-Complete guide for running the Fire Station Alert System on a Raspberry Pi with audio support.
+Complete guide for Raspberry Pi **displays**, **GPIO relays**, and (optional) running the full backend on a Pi.
+
+**If the Pi is overloaded:** run the main OpenAlerts server on a **Windows 10 PC** at the firehouse instead. Keep this Pi as a kiosk + `room-gpio-service` only. See **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**.
 
 ## Prerequisites
 

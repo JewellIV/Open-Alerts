@@ -2,7 +2,7 @@
 /**
  * Room GPIO Service - Run on EACH room Pi.
  * Controls local relays only. Does NOT use a database.
- * Central OpenAlerts backend (engine bay Pi) owns the single .db for alerts/notices/units.
+ * Central OpenAlerts backend (Windows firehouse PC or engine bay Pi) owns the single .db for alerts/notices/units.
  *
  * Env:
  *   ROOM_PINS   - Comma-separated GPIO BCM numbers (e.g. "4,5,6,7,8,9,21,22")
