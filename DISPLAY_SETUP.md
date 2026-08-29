@@ -24,7 +24,7 @@
    ```
    http://192.168.1.100:3000
    ```
-   (Replace `192.168.1.100` with your backend server IP)
+   (Replace `192.168.1.100` with your backend server IP — the Windows 10 firehouse PC if you moved the server off the Pi. See `WINDOWS_SETUP.md`.)
 
 4. **Set up kiosk mode** (optional, for auto-start):
    - Raspberry Pi: Create autostart script (see MULTI_DISPLAY_SETUP.md)

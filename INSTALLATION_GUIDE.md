@@ -364,7 +364,9 @@ sudo apt install -y git
 
 ### Phase 5: Backend Server Setup
 
-#### Step 5.1: Install Backend Software
+**Recommended if the Raspberry Pi is overloaded:** install the backend on a **Windows 10 PC** at the firehouse (static IP, firewall port 3000, auto-start). Pis then only run kiosk browsers and `room-gpio-service`. Follow **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)** and skip Step 5.1 below on the Pi.
+
+#### Step 5.1: Install Backend Software (Raspberry Pi option)
 
 **On Backend Raspberry Pi:**
 
@@ -380,7 +382,7 @@ sudo apt install -y git
    ```bash
    npm install
    ```
-   This installs the `onoff` package for GPIO relay control. **Always run `npm install` in the project root on the Pi** after clone or pull—do not copy `node_modules` from another machine. If you see "GPIO not available" or "Loaded 0 unit-to-pin mappings" at startup, run `npm install` here and add units in the Station Units admin, then restart the backend.
+   This installs optional GPIO support (`onoff`) on Linux. **Always run `npm install` in the project root on the machine that will run the backend** after clone or pull—do not copy `node_modules` from Windows to a Pi or the other way around. If the backend runs on Windows, GPIO stays on the Pi (`ROOM_GPIO_URLS`). If you see "GPIO not available" or "Loaded 0 unit-to-pin mappings" at startup on a Pi, run `npm install` here and add units in the Station Units admin, then restart.
 
 3. **Configure Environment:**
    ```bash
@@ -761,7 +763,7 @@ curl http://192.168.1.100:3000/health
 
 #### Per-Room Pi Setup (Room GPIO Service)
 
-When each room has its **own Pi and 8-channel relay** (speaker wire stays short in that room), run the **Room GPIO Service** on that Pi. The **central backend** (engine bay/server Pi) keeps the **single database**; each room Pi only drives its local relays.
+When each room has its **own Pi and 8-channel relay** (speaker wire stays short in that room), run the **Room GPIO Service** on that Pi. The **central backend** (Windows 10 firehouse PC, or engine bay/server Pi) keeps the **single database**; each room Pi only drives its local relays.
 
 **On each room Pi:**
 
@@ -789,7 +791,7 @@ When each room has its **own Pi and 8-channel relay** (speaker wire stays short 
    The service is configured to restart automatically if it crashes (e.g. after connection loss). If it doesn’t start after reboot, check that **WorkingDirectory** matches the actual install path and run `sudo systemctl enable room-gpio-service` again.
 4. On that room’s **display**, set **Backend URL** to the central server (e.g. `http://alerts.mangohickfire.com:3000`). If the app is loaded from that URL (not from the room Pi’s own host), the browser may block requests to `localhost:4000` (Chrome Private Network Access). In that case, configure the **central server** to proxy mute to the room Pi:
 
-   On the **engine bay / central server**, set:
+   On the **Windows PC / engine bay / central server**, set:
    ```bash
    ROOM_GPIO_URLS=mens_bunk:http://192.168.68.140:4000
    ```

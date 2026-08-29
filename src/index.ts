@@ -77,7 +77,13 @@ const uploadRecording = multer({
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', message: 'OpenAlerts API is running' });
+  res.json({
+    status: 'ok',
+    message: 'OpenAlerts API is running',
+    platform: process.platform,
+    amplifierGpioUrl: process.env.AMPLIFIER_GPIO_URL || null,
+    roomGpioUrlsConfigured: Boolean(process.env.ROOM_GPIO_URLS)
+  });
 });
 
 // Admin password authentication (for web admin pages)
@@ -1582,11 +1588,73 @@ if (roomGpioUrlsEnv) {
       const url = entry.slice(idx + 1).trim().replace(/\/+$/, '');
       const room = roomSpeakerConfigs.find(r => r.roomId === roomId);
       if (room) {
-        (room as RoomSpeakerConfig).gpioServiceUrl = url;
+        room.gpioServiceUrl = url;
         console.log(`🔌 Room "${roomId}" GPIO proxy: ${url}`);
+      } else {
+        roomSpeakerConfigs.push({
+          roomId,
+          roomName: roomId.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+          gpioServiceUrl: url
+        });
+        console.log(`🔌 Room "${roomId}" GPIO proxy (added from ROOM_GPIO_URLS): ${url}`);
       }
     }
   }
+}
+
+const AMPLIFIER_GPIO_URL = (process.env.AMPLIFIER_GPIO_URL || '').replace(/\/+$/, '');
+const RADIO_GPIO_PIN = parseInt(process.env.RADIO_GPIO_PIN || '23', 10);
+
+async function proxyGpioMute(
+  gpioServiceUrl: string,
+  mute: boolean,
+  pins?: number[]
+): Promise<{ ok: boolean; status?: number; pins?: number[]; error?: string }> {
+  const url = `${gpioServiceUrl.replace(/\/+$/, '')}/gpio/mute`;
+  const body: { mute: boolean; pins?: number[] } = { mute };
+  if (Array.isArray(pins) && pins.length > 0) {
+    body.pins = pins;
+  }
+  try {
+    const fwd = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!fwd.ok) {
+      const errText = await fwd.text();
+      return { ok: false, status: fwd.status, error: errText || `Upstream returned ${fwd.status}` };
+    }
+    const data = (await fwd.json().catch(() => ({}))) as { pins?: number[] };
+    return { ok: true, pins: data.pins };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'GPIO proxy request failed'
+    };
+  }
+}
+
+function gpioServiceUrlsForUnit(unitName: string): string[] {
+  const urls = new Set<string>();
+  const needle = unitName.toLowerCase();
+  for (const room of roomSpeakerConfigs) {
+    if (!room.gpioServiceUrl) continue;
+    if (!room.units || room.units.length === 0) continue;
+    if (room.units.some((unit) => unit.toLowerCase() === needle)) {
+      urls.add(room.gpioServiceUrl);
+    }
+  }
+  return Array.from(urls);
+}
+
+function allGpioServiceUrls(): string[] {
+  const urls = new Set<string>();
+  for (const room of roomSpeakerConfigs) {
+    if (room.gpioServiceUrl) urls.add(room.gpioServiceUrl);
+  }
+  if (AMPLIFIER_GPIO_URL) urls.add(AMPLIFIER_GPIO_URL);
+  return Array.from(urls);
 }
 
 // Also load units from station_units database to build pin mappings
@@ -1643,9 +1711,22 @@ if (process.platform === 'linux') {
     console.warn('Install with: npm install onoff');
     console.warn('For dual relay setup, install onoff and restart backend');
   }
+} else {
+  console.log(`🖥️  Local GPIO skipped (${process.platform}) — relays stay on Raspberry Pi GPIO services`);
+  if (AMPLIFIER_GPIO_URL) {
+    console.log(`📻 Amplifier/radio GPIO proxy: ${AMPLIFIER_GPIO_URL} (pin ${RADIO_GPIO_PIN})`);
+  } else {
+    console.log('ℹ️  Set AMPLIFIER_GPIO_URL to the engine-bay Pi GPIO service if radio/amp relays are still on a Pi');
+  }
+  const proxyCount = roomSpeakerConfigs.filter((room) => room.gpioServiceUrl).length;
+  if (proxyCount > 0) {
+    console.log(`🔌 Room GPIO proxies configured: ${proxyCount}`);
+  } else {
+    console.log('ℹ️  Set ROOM_GPIO_URLS so this Windows server can mute room Pi relays');
+  }
 }
 
-app.post('/api/amplifier/mute', validateApiKey, (req: Request, res: Response) => {
+app.post('/api/amplifier/mute', validateApiKey, async (req: Request, res: Response) => {
   try {
     const { mute } = req.body;
     
@@ -1654,9 +1735,19 @@ app.post('/api/amplifier/mute', validateApiKey, (req: Request, res: Response) =>
     if (radioRelay) {
       // GPIO control: 1 = mute radio (relay closed), 0 = unmute radio (relay open)
       radioRelay.writeSync(mute ? 1 : 0);
-      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} via GPIO pin 23`);
+      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} via GPIO pin ${RADIO_GPIO_PIN}`);
+    } else if (AMPLIFIER_GPIO_URL) {
+      const proxied = await proxyGpioMute(AMPLIFIER_GPIO_URL, !!mute, [RADIO_GPIO_PIN]);
+      if (!proxied.ok) {
+        console.warn(`📻 Radio GPIO proxy failed: ${proxied.error}`);
+        return res.status(502).json({
+          error: 'Amplifier GPIO proxy failed',
+          message: proxied.error || 'Unable to reach Pi GPIO service'
+        });
+      }
+      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} via GPIO proxy ${AMPLIFIER_GPIO_URL} pin ${RADIO_GPIO_PIN}`);
     } else {
-      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} (GPIO not available)`);
+      console.log(`📻 Radio ${mute ? 'muted' : 'unmuted'} (GPIO not available — set AMPLIFIER_GPIO_URL)`);
     }
     
     res.json({ 
@@ -1714,7 +1805,7 @@ app.get('/api/amplifier/status', validateApiKey, (req: Request, res: Response) =
 });
 
 // Unit-based speaker control endpoints
-app.post('/api/unit-speaker/mute', validateAdminSession, (req: Request, res: Response) => {
+app.post('/api/unit-speaker/mute', validateAdminSession, async (req: Request, res: Response) => {
   try {
     const { units, mute } = req.body;
     
@@ -1730,22 +1821,42 @@ app.post('/api/unit-speaker/mute', validateAdminSession, (req: Request, res: Res
     
     for (const unitName of units) {
       const pin = getPinForUnit(unitName);
-      if (pin && !controlledPins.has(pin)) {
-        const relay = unitSpeakerRelays.get(pin);
-        if (relay) {
-          try {
-            // GPIO control: 1 = mute (relay closed), 0 = unmute (relay open)
-            relay.writeSync(mute ? 1 : 0);
-            controlledPins.add(pin);
-            results.push({ unit: unitName, pin, success: true });
-            console.log(`🔊 Unit speaker ${mute ? 'muted' : 'unmuted'}: ${unitName} (GPIO ${pin})`);
-          } catch (error) {
-            results.push({ unit: unitName, pin, success: false });
-            console.error(`Error controlling relay for ${unitName} (GPIO ${pin}):`, error);
-          }
-        } else {
+      if (!pin || controlledPins.has(pin)) continue;
+
+      const relay = unitSpeakerRelays.get(pin);
+      if (relay) {
+        try {
+          // GPIO control: 1 = mute (relay closed), 0 = unmute (relay open)
+          relay.writeSync(mute ? 1 : 0);
+          controlledPins.add(pin);
+          results.push({ unit: unitName, pin, success: true });
+          console.log(`🔊 Unit speaker ${mute ? 'muted' : 'unmuted'}: ${unitName} (GPIO ${pin})`);
+        } catch (error) {
           results.push({ unit: unitName, pin, success: false });
+          console.error(`Error controlling relay for ${unitName} (GPIO ${pin}):`, error);
         }
+        continue;
+      }
+
+      const proxyUrls = gpioServiceUrlsForUnit(unitName);
+      const targets = proxyUrls.length > 0 ? proxyUrls : allGpioServiceUrls();
+      if (targets.length === 0) {
+        results.push({ unit: unitName, pin, success: false });
+        continue;
+      }
+
+      let proxiedOk = false;
+      for (const url of targets) {
+        const proxied = await proxyGpioMute(url, !!mute, [pin]);
+        if (proxied.ok) proxiedOk = true;
+        else console.warn(`🔊 Unit GPIO proxy failed for ${unitName} via ${url}: ${proxied.error}`);
+      }
+      if (proxiedOk) {
+        controlledPins.add(pin);
+        results.push({ unit: unitName, pin, success: true });
+        console.log(`🔊 Unit speaker ${mute ? 'muted' : 'unmuted'} (proxy): ${unitName} (GPIO ${pin})`);
+      } else {
+        results.push({ unit: unitName, pin, success: false });
       }
     }
     
@@ -1783,30 +1894,22 @@ app.post('/api/room-speaker/:roomId/mute', async (req: Request, res: Response) =
 
     // If this room has a GPIO service URL (room Pi), forward mute there so browser PNA is not involved
     if (roomConfig.gpioServiceUrl) {
-      const url = `${roomConfig.gpioServiceUrl.replace(/\/+$/, '')}/gpio/mute`;
-      const body: { mute: boolean; pins?: number[] } = typeof mute === 'boolean' ? { mute } : { mute: !!mute };
-      if (Array.isArray(pins) && pins.length > 0) body.pins = pins;
-      const fwd = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (!fwd.ok) {
-        const errText = await fwd.text();
-        console.warn(`Room GPIO proxy ${roomId} failed (${fwd.status}): ${errText}`);
+      const pinList = Array.isArray(pins) && pins.length > 0 ? pins : undefined;
+      const proxied = await proxyGpioMute(roomConfig.gpioServiceUrl, !!mute, pinList);
+      if (!proxied.ok) {
+        console.warn(`Room GPIO proxy ${roomId} failed (${proxied.status}): ${proxied.error}`);
         return res.status(502).json({
           error: 'Room GPIO proxy failed',
-          message: errText || `Upstream returned ${fwd.status}`
+          message: proxied.error || `Upstream returned ${proxied.status}`
         });
       }
-      const data = (await fwd.json().catch(() => ({}))) as { pins?: number[] };
       console.log(`🔊 Room speaker ${mute ? 'muted' : 'unmuted'} (proxy): ${roomConfig.roomName}`);
       return res.json({
         success: true,
         muted: mute,
         roomId,
         roomName: roomConfig.roomName,
-        controlledPins: data.pins,
+        controlledPins: proxied.pins,
         message: `Room speaker ${mute ? 'muted' : 'unmuted'} successfully`
       });
     }
@@ -2425,9 +2528,12 @@ app.get('*', (req: Request, res: Response) => {
 });
 
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`🚨 OpenAlerts API server running on http://0.0.0.0:${PORT}`);
+  console.log(`🚨 OpenAlerts API server running on http://0.0.0.0:${PORT} (${process.platform})`);
   console.log(`📊 Database initialized at: alerts.db`);
   console.log(`🔌 Socket.io server ready`);
+  if (process.platform === 'win32') {
+    console.log('🖥️  Windows host: displays should open http://THIS_PC_IP:3000 — keep room-gpio-service running on each Pi');
+  }
   
   // Phase 5: Discord integration status
   if (isDiscordConfigured()) {

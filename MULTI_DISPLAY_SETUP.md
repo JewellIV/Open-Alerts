@@ -243,23 +243,31 @@ VITE_NIGHT_MODE_ENABLED=true
 
 ### Example 2: Backend on Windows PC, Displays on Raspberry Pis
 
+**Recommended when the Pi is overloaded.** Full steps (firewall, auto-start, moving `alerts.db`): **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**.
+
 **Windows PC (Backend):**
 ```powershell
-# Install Node.js, then:
-cd C:\MVFD-Phoenix
+# Install Node.js 22 LTS, then:
+cd C:\OpenAlerts
 npm install
 cd frontend
 npm install
 npm run build
 cd ..
-npm run dev
+npm run build
+.\start-openalerts.bat
 ```
 
 **Raspberry Pi Displays:**
-```bash
-# frontend/.env
-VITE_BACKEND_URL=http://192.168.1.50:3000  # Windows PC IP
-VITE_DISPLAY_TYPE=room
+```
+# Open the kiosk at the Windows PC IP (do not run the full backend on the Pi)
+http://192.168.1.50:3000
+```
+
+Keep `room-gpio-service` running on each room Pi. On the Windows `.env`:
+```env
+ROOM_GPIO_URLS=mens_bunk:http://192.168.68.140:4000
+AMPLIFIER_GPIO_URL=http://192.168.68.141:4000
 ```
 
 ### Example 3: Backend on Linux Server, Displays Everywhere

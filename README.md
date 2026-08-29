@@ -28,13 +28,19 @@ A free, self-hosted fire station alerting system designed for volunteer fire dep
 
 ## 📋 Requirements
 
-- **Node.js** v18 or higher
+- **Node.js** v18 or higher (v22 LTS recommended)
 - **npm** or **yarn**
 - **SQLite** (included with better-sqlite3)
 - **Network** - For multi-display setup
 
+### Recommended host for the main server
+
+Run the **backend on a Windows 10 (or later) PC at the firehouse** if the Raspberry Pi is overloaded. Pis then only run a kiosk browser and the small GPIO service.
+
+See **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)** for install, firewall, auto-start, and moving `alerts.db` off the Pi.
+
 ### Optional Hardware
-- Raspberry Pi 5 (recommended for GPIO control)
+- Raspberry Pi 5 (recommended for GPIO control and room displays)
 - GPIO relay modules (for room speaker control)
 - External speakers/amplifiers
 - Smart lights (Philips Hue, etc.)
@@ -52,7 +58,8 @@ cd openalerts
 npm install
 
 # On Raspberry Pi: npm install above also installs the onoff package for GPIO.
-# Run this in the project root on the Pi after clone/pull—do not copy node_modules from Windows.
+# On Windows: onoff is optional and can be ignored; GPIO stays on the Pi.
+# Run this in the project root after clone/pull—do not copy node_modules between Windows and the Pi.
 
 # Install frontend dependencies
 cd frontend
@@ -153,24 +160,25 @@ See `INTEGRATION_GUIDE.md` for detailed setup instructions.
 
 ```
 ┌─────────────────┐
-│  Backend Server │  ← Runs on one device (Raspberry Pi, PC, or server)
-│   Port 3000     │     - Handles alerts, database, GPIO control
+│  Backend Server │  ← Run on a Windows 10 PC when the Pi is overloaded
+│   Port 3000     │     - Handles alerts, database, CAD webhooks
 └────────┬────────┘     - Serves frontend to all displays
+         │              - Forwards mute to Pi GPIO services (no local GPIO)
          │
          │ Socket.io + HTTP
          │
     ┌────┴────┬──────────┬──────────┐
     │         │          │          │
 ┌───▼───┐ ┌──▼───┐  ┌───▼───┐  ┌───▼───┐
-│Display│ │Display│  │Display│  │Display│  ← Multiple frontend displays
-│   1   │ │   2   │  │   3   │  │   N   │     (Raspberry Pis, PCs, etc.)
-└───────┘ └───────┘  └───────┘  └───────┘     - Connect via network
-                                                 - Receive alerts in real-time
+│Display│ │Display│  │Display│  │Display│  ← Raspberry Pi kiosks + GPIO
+│   1   │ │   2   │  │   3   │  │   N   │     - Browser → Windows PC:3000
+└───────┘ └───────┘  └───────┘  └───────┘     - room-gpio-service :4000
 ```
 
 ## 📚 Documentation
 
 - **[Installation Guide](INSTALLATION_GUIDE.md)** - Complete setup instructions
+- **[Windows 10 Server Setup](WINDOWS_SETUP.md)** - Run the main backend on a firehouse PC
 - **[Integration Guide](INTEGRATION_GUIDE.md)** - External system integration
 - **[Multi-Display Setup](MULTI_DISPLAY_SETUP.md)** - Multiple display configuration
 - **[Room Speaker Setup](ROOM_SPEAKER_SETUP.md)** - Per-room speaker control
@@ -236,6 +244,8 @@ See API documentation in code comments for complete endpoint details.
 | `DISCORD_WEBHOOK_URL` | Discord webhook URL | No |
 | `SLACK_WEBHOOK_URL` | Slack webhook URL | No |
 | `ROOM_SPEAKERS` | Room speaker configuration | No |
+| `ROOM_GPIO_URLS` | Per-room Pi GPIO service URLs (Windows backend) | No |
+| `AMPLIFIER_GPIO_URL` | Engine-bay Pi GPIO service for radio/amp relays | No |
 
 ### Frontend Configuration
 
@@ -291,10 +301,10 @@ taskkill /PID <PID> /F
 4. Verify network connectivity
 
 ### GPIO Not Working
-1. **Run `npm install` in the project root on the Raspberry Pi** – The `onoff` package (for GPIO) is a dependency; it must be installed on the Pi. Do not copy `node_modules` from Windows; run `npm install` on the Pi after clone or pull.
-2. If you see "GPIO not available - onoff library may not be installed", run `npm install` in the project root, then restart the backend.
-3. If you see "Loaded 0 unit-to-pin mappings", add active units in the Station Units admin (e.g. Engine 1, Medic 2) so the backend can assign GPIO pins.
-4. Ensure running on Raspberry Pi (Linux); GPIO is not available on Windows.
+1. **If the backend is on Windows:** GPIO will never run on the PC. Keep `room-gpio-service` on each Pi and set `ROOM_GPIO_URLS` / `AMPLIFIER_GPIO_URL` in `.env`. See `WINDOWS_SETUP.md`.
+2. **Run `npm install` in the project root on the Raspberry Pi** – The `onoff` package (for GPIO) is optional; it must be installed on the Pi. Do not copy `node_modules` from Windows.
+3. If you see "GPIO not available - onoff library may not be installed", run `npm install` in the project root on the Pi, then restart the backend (or room-gpio-service).
+4. If you see "Loaded 0 unit-to-pin mappings", add active units in the Station Units admin (e.g. Engine 1, Medic 2) so the backend can assign GPIO pins.
 5. Verify GPIO pin numbers and relay wiring (see setup guides).
 
 See individual setup guides for detailed troubleshooting.
